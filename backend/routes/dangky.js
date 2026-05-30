@@ -1,7 +1,7 @@
 import express from 'express';
 import sql from 'mssql';
 import { getPool } from '../config/db.js';
-import { isValidNode } from '../config/nodes.js';
+import { isValidNode, normalizeNodeKey } from '../config/nodes.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 
@@ -50,34 +50,31 @@ async function runOnNode(nodeKey, task) {
   }
 }
 
-async function ensureStudentExists(transaction, nodeKey, maSV, maCS) {
+async function ensureStudentExists(transaction, nodeKey, maSV) {
   const request = createRequest(nodeKey, transaction);
   request.input('maSV', ID_TYPE, maSV);
-  const result = await request.query(
-    `SELECT id_headquarter AS maCS FROM student WHERE id_student = @maSV`
-  );
+  const result = await request.query(`SELECT 1 AS ok FROM student WHERE ID_student = @maSV`);
   if (result.recordset.length === 0) {
     throw createHttpError(404, 'Không tìm thấy sinh viên.');
   }
-  if (result.recordset[0].maCS !== maCS) {
-    throw createHttpError(400, 'Sinh viên không thuộc cơ sở này.');
-  }
 }
 
-async function ensureClassAvailable(transaction, nodeKey, maLop, maCSLop) {
+async function ensureClassAvailable(transaction, nodeKey, maLop) {
   const request = createRequest(nodeKey, transaction);
   request.input('maLop', ID_TYPE, maLop);
   const result = await request.query(
-    `SELECT id_headquarter AS maCS, max_enrolled AS siSoToiDa, enrolled_count AS siSoDaDK
+    `SELECT max_students AS siSoToiDa,
+            number_of_registration AS siSoDaDK,
+            class_status AS trangThai
      FROM [class]
-     WHERE id_class = @maLop`
+     WHERE ID_class = @maLop`
   );
   if (result.recordset.length === 0) {
     throw createHttpError(404, 'Không tìm thấy lớp học phần.');
   }
-  const { maCS, siSoToiDa, siSoDaDK } = result.recordset[0];
-  if (maCS !== maCSLop) {
-    throw createHttpError(400, 'Lớp học phần không thuộc cơ sở đã chọn.');
+  const { siSoToiDa, siSoDaDK, trangThai } = result.recordset[0];
+  if (trangThai && trangThai !== 'OPEN') {
+    throw createHttpError(400, 'Lớp học phần đang đóng.');
   }
   if (siSoDaDK >= siSoToiDa) {
     throw createHttpError(400, 'Lớp học phần đã đủ sĩ số.');
@@ -91,7 +88,10 @@ async function ensureNotRegistered(transaction, nodeKey, maSV, maLop) {
   const result = await request.query(
     `SELECT 1 AS daDangKy
      FROM registration
-     WHERE id_student = @maSV AND id_class = @maLop`
+     WHERE ID_student = @maSV
+       AND ID_class = @maLop
+       AND cancelled_at IS NULL
+       AND registration_status = 'REGISTERED'`
   );
   if (result.recordset.length > 0) {
     throw createHttpError(400, 'Sinh viên đã đăng ký lớp học phần này.');
@@ -103,8 +103,8 @@ async function insertRegistration(transaction, nodeKey, maSV, maLop) {
   request.input('maSV', ID_TYPE, maSV);
   request.input('maLop', ID_TYPE, maLop);
   await request.query(
-    `INSERT INTO registration (id_student, id_class, registered_at)
-     VALUES (@maSV, @maLop, SYSUTCDATETIME())`
+    `INSERT INTO registration (ID_registration, ID_student, ID_class, registered_at, registration_status)
+     VALUES (LEFT(CONVERT(VARCHAR(36), NEWID()), 16), @maSV, @maLop, GETDATE(), 'REGISTERED')`
   );
 }
 
@@ -113,8 +113,8 @@ async function incrementClassEnrolled(transaction, nodeKey, maLop) {
   request.input('maLop', ID_TYPE, maLop);
   await request.query(
     `UPDATE [class]
-     SET enrolled_count = enrolled_count + 1
-     WHERE id_class = @maLop`
+     SET number_of_registration = number_of_registration + 1
+     WHERE ID_class = @maLop`
   );
 }
 
@@ -124,14 +124,15 @@ async function deleteRegistration(nodeKey, maSV, maLop) {
   request.input('maSV', ID_TYPE, maSV);
   request.input('maLop', ID_TYPE, maLop);
   await request.query(
-    `DELETE FROM registration WHERE id_student = @maSV AND id_class = @maLop`
+    `DELETE FROM registration WHERE ID_student = @maSV AND ID_class = @maLop`
   );
 }
 
 router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const { maLop, maCSLop } = req.body ?? {};
   const maSV = req.user?.id;
-  const maCS = req.user?.maCS;
+  const maCS = normalizeNodeKey(req.user?.maCS);
+  const maCSLopNormalized = normalizeNodeKey(maCSLop);
 
   if (!maSV || !maCS) {
     return res.status(400).json({
@@ -147,21 +148,21 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
     });
   }
 
-  if (!isValidNode(maCS) || !isValidNode(maCSLop)) {
+  if (!isValidNode(maCS) || !isValidNode(maCSLopNormalized)) {
     return res.status(400).json({
       success: false,
       message: 'Mã cơ sở không hợp lệ.'
     });
   }
 
-  if (maCS === maCSLop) {
+  if (maCS === maCSLopNormalized) {
     let transaction;
     try {
       const pool = await safeGetPool(maCS);
       transaction = new sql.Transaction(pool);
       await transaction.begin();
-      await runOnNode(maCS, () => ensureStudentExists(transaction, maCS, maSV, maCS));
-      await runOnNode(maCS, () => ensureClassAvailable(transaction, maCS, maLop, maCSLop));
+      await runOnNode(maCS, () => ensureStudentExists(transaction, maCS, maSV));
+      await runOnNode(maCS, () => ensureClassAvailable(transaction, maCS, maLop));
       await runOnNode(maCS, () => ensureNotRegistered(transaction, maCS, maSV, maLop));
       await runOnNode(maCS, () => insertRegistration(transaction, maCS, maSV, maLop));
       await runOnNode(maCS, () => incrementClassEnrolled(transaction, maCS, maLop));
@@ -186,7 +187,7 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
   let transactionClass;
   try {
     const poolStudent = await safeGetPool(maCS);
-    const poolClass = await safeGetPool(maCSLop);
+    const poolClass = await safeGetPool(maCSLopNormalized);
 
     transactionStudent = new sql.Transaction(poolStudent);
     transactionClass = new sql.Transaction(poolClass);
@@ -194,12 +195,12 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
     await transactionStudent.begin();
     await transactionClass.begin();
 
-    await runOnNode(maCS, () => ensureStudentExists(transactionStudent, maCS, maSV, maCS));
+    await runOnNode(maCS, () => ensureStudentExists(transactionStudent, maCS, maSV));
     await runOnNode(maCS, () => ensureNotRegistered(transactionStudent, maCS, maSV, maLop));
-    await runOnNode(maCSLop, () => ensureClassAvailable(transactionClass, maCSLop, maLop, maCSLop));
+    await runOnNode(maCSLopNormalized, () => ensureClassAvailable(transactionClass, maCSLopNormalized, maLop));
 
     await runOnNode(maCS, () => insertRegistration(transactionStudent, maCS, maSV, maLop));
-    await runOnNode(maCSLop, () => incrementClassEnrolled(transactionClass, maCSLop, maLop));
+    await runOnNode(maCSLopNormalized, () => incrementClassEnrolled(transactionClass, maCSLopNormalized, maLop));
 
     await transactionStudent.commit();
     try {
@@ -215,7 +216,7 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
         maSV,
         maLop,
         maCS,
-        maCSLop
+        maCSLop: maCSLopNormalized
       }
     });
   } catch (error) {
@@ -224,6 +225,68 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
     }
     if (transactionClass) {
       await transactionClass.rollback().catch(() => undefined);
+    }
+    return sendError(res, error);
+  }
+});
+
+router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  const { maDangKy } = req.body ?? {};
+  const maSV = req.user?.id;
+  const maCS = normalizeNodeKey(req.user?.maCS);
+
+  if (!maSV || !maCS) {
+    return res.status(400).json({
+      success: false,
+      message: 'Thiếu thông tin sinh viên.'
+    });
+  }
+
+  if (!maDangKy) {
+    return res.status(400).json({
+      success: false,
+      message: 'Thiếu mã đăng ký.'
+    });
+  }
+
+  let transaction;
+  try {
+    const pool = await safeGetPool(maCS);
+    transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    const request = createRequest(maCS, transaction);
+    request.input('maDangKy', ID_TYPE, maDangKy);
+    request.input('maSV', ID_TYPE, maSV);
+
+    const regCheck = await request.query(
+      `SELECT ID_class FROM registration WHERE ID_registration = @maDangKy AND ID_student = @maSV`
+    );
+
+    if (regCheck.recordset.length === 0) {
+      throw createHttpError(404, 'Không tìm thấy đăng ký.');
+    }
+
+    const maLop = regCheck.recordset[0].ID_class;
+
+    await request.query(
+      `UPDATE registration SET cancelled_at = GETDATE(), registration_status = 'CANCELLED' WHERE ID_registration = @maDangKy`
+    );
+
+    request.input('maLop', ID_TYPE, maLop);
+    await request.query(
+      `UPDATE [class] SET number_of_registration = number_of_registration - 1 WHERE ID_class = @maLop`
+    );
+
+    await transaction.commit();
+
+    return res.json({
+      success: true,
+      message: 'Hủy đăng ký thành công.'
+    });
+  } catch (error) {
+    if (transaction) {
+      await transaction.rollback().catch(() => undefined);
     }
     return sendError(res, error);
   }

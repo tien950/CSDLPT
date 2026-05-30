@@ -9,6 +9,11 @@ const nodeDefaults = {
 };
 
 export const nodeKeys = ['HQHD', 'HQHL', 'HQHCM'];
+const headquarterDefaults = {
+  HQHD: 'HQHD',
+  HQHL: 'HQHL',
+  HQHCM: 'HQHCM'
+};
 
 export function getNodes() {
   return {
@@ -31,6 +36,23 @@ export function getNode(nodeKey) {
   return getNodes()[nodeKey];
 }
 
+export function getHeadquarterId(nodeKey) {
+  const key = nodeKeys.includes(nodeKey) ? nodeKey : null;
+  if (!key) return null;
+  const envKey = `${key}_HEADQUARTER_ID`;
+  return process.env[envKey] ?? headquarterDefaults[key];
+}
+
+export function normalizeNodeKey(value) {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (nodeKeys.includes(trimmed)) {
+    return trimmed;
+  }
+  const match = nodeKeys.find(key => getHeadquarterId(key) === trimmed);
+  return match ?? null;
+}
+
 export function isValidNode(nodeKey) {
-  return nodeKeys.includes(nodeKey);
+  return normalizeNodeKey(nodeKey) !== null;
 }
