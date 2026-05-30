@@ -1,0 +1,161 @@
+import { useEffect, useMemo, useState } from 'react';
+
+const campusOptions = [
+  { value: 'HQHD', label: 'Hà Đông' },
+  { value: 'HQHL', label: 'Hòa Lạc' },
+  { value: 'HQHCM', label: 'TP. HCM' }
+];
+
+function formatMessage(payload) {
+  if (!payload) return '';
+  if (payload.node && payload.status === 'offline') {
+    return `Node ${payload.node} đang offline.`;
+  }
+  return payload.message ?? 'Có lỗi xảy ra.';
+}
+
+export default function DangKyHocPhan({ apiBase, token, user }) {
+  const [maLop, setMaLop] = useState('');
+  const [maCSLop, setMaCSLop] = useState(user.maCS);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [classOptions, setClassOptions] = useState([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [classMessage, setClassMessage] = useState('');
+
+  const campusLabel = useMemo(() => {
+    const option = campusOptions.find(item => item.value === user.maCS);
+    return option ? option.label : user.maCS;
+  }, [user.maCS]);
+
+  useEffect(() => {
+    let isActive = true;
+    const fetchClasses = async () => {
+      setLoadingClasses(true);
+      setClassMessage('');
+      try {
+        const response = await fetch(`${apiBase}/api/hocphan/classes?maCS=${maCSLop}`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+          throw payload;
+        }
+        const rows = payload.data ?? [];
+        if (!isActive) return;
+        setClassOptions(rows);
+        const hasCurrent = rows.some(row => row.id_class === maLop);
+        if (!hasCurrent) {
+          setMaLop(rows[0]?.id_class ?? '');
+        }
+      } catch (error) {
+        if (!isActive) return;
+        setClassOptions([]);
+        setClassMessage(formatMessage(error));
+      } finally {
+        if (isActive) {
+          setLoadingClasses(false);
+        }
+      }
+    };
+
+    fetchClasses();
+    return () => {
+      isActive = false;
+    };
+  }, [apiBase, token, maCSLop, maLop]);
+
+  const handleSubmit = async event => {
+    event.preventDefault();
+    setLoading(true);
+    setResult(null);
+
+    try {
+      const response = await fetch(`${apiBase}/api/dangky`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ maLop, maCSLop })
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload.success) {
+        throw payload;
+      }
+
+      setResult({
+        type: 'success',
+        text: `Đăng ký thành công lớp ${payload.data.maLop} tại cơ sở ${payload.data.maCSLop ?? payload.data.maCS}.`
+      });
+      setMaLop('');
+    } catch (error) {
+      setResult({
+        type: 'error',
+        text: formatMessage(error)
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section className="card">
+      <h2>Đăng ký học phần</h2>
+      <p className="subtitle">
+        Cơ sở của bạn: <strong>{campusLabel}</strong>
+      </p>
+
+      <form className="form" onSubmit={handleSubmit}>
+        <label>
+          Mã lớp học phần
+          <select
+            value={maLop}
+            onChange={event => setMaLop(event.target.value)}
+            disabled={loadingClasses}
+            required
+          >
+            <option value="">-- Chọn lớp học phần --</option>
+            {classOptions.map(option => (
+              <option key={option.id_class} value={option.id_class}>
+                {option.id_class}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Cơ sở lớp học phần
+          <select
+            value={maCSLop}
+            onChange={event => setMaCSLop(event.target.value)}
+          >
+            {campusOptions.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {classMessage && <div className="alert">{classMessage}</div>}
+        {!classMessage && !loadingClasses && classOptions.length === 0 && (
+          <div className="alert">Không có lớp học phần tại cơ sở này.</div>
+        )}
+
+        {result && (
+          <div className={result.type === 'success' ? 'alert success' : 'alert'}>
+            {result.text}
+          </div>
+        )}
+
+        <button type="submit" disabled={loading}>
+          {loading ? 'Đang xử lý...' : 'Đăng ký'}
+        </button>
+      </form>
+    </section>
+  );
+}
