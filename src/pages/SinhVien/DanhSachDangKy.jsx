@@ -67,10 +67,22 @@ export default function DanhSachDangKy({ apiBase, token }) {
       const availData = await availRes.json();
       const regData = await regRes.json();
 
-      if (availData.success) setAvailable(availData.data || []);
-      if (regData.success) setRegistered(regData.data || []);
+      if (!availData.success) {
+        setError(availData.message || 'Không thể tải danh sách môn học.');
+        setAvailable([]);
+      } else {
+        setAvailable(availData.data || []);
+      }
+
+      if (!regData.success) {
+        setError(prev => prev ? prev + ' | ' + (regData.message || 'Lỗi tải danh sách đã đăng ký') : (regData.message || 'Lỗi tải danh sách đã đăng ký'));
+      } else {
+        setRegistered(regData.data || []);
+      }
     } catch (err) {
-      setError('Có lỗi khi tải dữ liệu.');
+      setError('Có lỗi khi tải dữ liệu: ' + err.message);
+      setAvailable([]);
+      setRegistered([]);
     } finally {
       setLoading(false);
     }
