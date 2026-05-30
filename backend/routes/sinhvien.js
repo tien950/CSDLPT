@@ -2,7 +2,7 @@ import express from 'express';
 import sql from 'mssql';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { getPool } from '../config/db.js';
-import { nodeKeys } from '../config/nodes.js';
+import { nodeKeys, normalizeNodeKey } from '../config/nodes.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 
 const router = express.Router();
@@ -47,7 +47,7 @@ function buildInClause(values, prefix) {
 
 router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const maSV = req.user?.id;
-  const maCS = req.user?.maCS;
+  const maCS = normalizeNodeKey(req.user?.maCS);
 
   if (!maSV || !maCS) {
     return res.status(400).json({
@@ -61,10 +61,22 @@ router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req
     const request = createRequest(maCS, null, pool);
     request.input('maSV', ID_TYPE, maSV);
     const result = await request.query(
-      `SELECT *
-       FROM registration
-       WHERE id_student = @maSV
-       ORDER BY registered_at DESC`
+      `SELECT 
+         r.ID_registration AS maDangKy,
+         r.ID_class AS maMH,
+         s.name_subject AS tenMonHoc,
+         s.number_of_credit AS soTC,
+         c.group_number AS nhom,
+         t.name_teacher AS giangVien,
+         r.registered_at AS ngayDangKy,
+         r.registration_status AS trangThai,
+         r.cancelled_at AS ngayHuy
+       FROM registration r
+       JOIN [class] c ON c.ID_class = r.ID_class
+       JOIN subject s ON s.ID_subject = c.ID_subject
+       JOIN teacher t ON t.ID_teacher = c.ID_teacher
+       WHERE r.ID_student = @maSV
+       ORDER BY r.registered_at DESC`
     );
     return res.json({
       success: true,
@@ -77,7 +89,7 @@ router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req
 
 router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const maSV = req.user?.id;
-  const maCS = req.user?.maCS;
+  const maCS = normalizeNodeKey(req.user?.maCS);
 
   if (!maSV || !maCS) {
     return res.status(400).json({
@@ -91,12 +103,12 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
     const request = createRequest(maCS, null, pool);
     request.input('maSV', ID_TYPE, maSV);
     const registrations = await request.query(
-      `SELECT id_class
+      `SELECT ID_class
        FROM registration
-       WHERE id_student = @maSV`
+       WHERE ID_student = @maSV`
     );
 
-    const classIds = registrations.recordset.map(row => row.id_class).filter(Boolean);
+    const classIds = registrations.recordset.map(row => row.ID_class).filter(Boolean);
 
     if (classIds.length === 0) {
       return res.json({
@@ -118,10 +130,10 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
             nodeRequest.input(param.name, ID_TYPE, param.value);
           });
           const result = await nodeRequest.query(
-            `SELECT s.*, '${nodeKey}' AS node
-             FROM [session] s
-             WHERE s.id_class IN (${clause})`
-          );
+          `SELECT s.*, '${nodeKey}' AS node
+           FROM [session] s
+           WHERE s.ID_class IN (${clause})`
+        );
           return { nodeKey, rows: result.recordset };
         } catch (error) {
           const nodeError = withNode(nodeKey, error);

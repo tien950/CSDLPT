@@ -1,22 +1,22 @@
 export const demoUsers = [
   {
-    id: 'SVHD01',
-    username: 'sv_hd_01',
-    password: 'sv123',
+    id: 'B22CNTT005',
+    username: 'b22cntt005',
+    password: '123456',
     role: 'sinhvien',
     maCS: 'HQHD'
   },
   {
-    id: 'SVHL01',
-    username: 'sv_hl_01',
-    password: 'sv123',
+    id: 'B22ATTT005',
+    username: 'b22attt005',
+    password: '123456',
     role: 'sinhvien',
     maCS: 'HQHL'
   },
   {
-    id: 'SVHCM01',
-    username: 'sv_hcm_01',
-    password: 'sv123',
+    id: 'B22ATTT001',
+    username: 'b22attt001',
+    password: '123456',
     role: 'sinhvien',
     maCS: 'HQHCM'
   },

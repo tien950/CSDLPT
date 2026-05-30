@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import Login from './pages/Login.jsx';
-import DangKyHocPhan from './pages/SinhVien/DangKyHocPhan.jsx';
+import DanhSachDangKy from './pages/SinhVien/DanhSachDangKy.jsx';
 import GiamSatNode from './pages/QuanTri/GiamSatNode.jsx';
 
 const STORAGE_KEY = 'csdlpt.auth';
@@ -71,7 +71,7 @@ export default function App() {
       </header>
 
       {user.role === 'sinhvien' && (
-        <DangKyHocPhan apiBase={apiBase} token={auth.token} user={user} />
+        <DanhSachDangKy apiBase={apiBase} token={auth.token} />
       )}
 
       {user.role === 'quantrivien' && (
