@@ -102,9 +102,20 @@ async function insertRegistration(transaction, nodeKey, maSV, maLop) {
   const request = createRequest(nodeKey, transaction);
   request.input('maSV', ID_TYPE, maSV);
   request.input('maLop', ID_TYPE, maLop);
+  
+  // Get next REG ID (only from IDs starting with 'REG')
+  const result = await request.query(
+    `SELECT ISNULL(MAX(CAST(SUBSTRING(ID_registration, 4, 10) AS INT)), 0) + 1 AS nextNum 
+     FROM registration
+     WHERE ID_registration LIKE 'REG[0-9]%'`
+  );
+  const nextNum = result.recordset[0]?.nextNum || 1;
+  const regId = 'REG' + String(nextNum).padStart(3, '0');
+  
+  request.input('regId', ID_TYPE, regId);
   await request.query(
     `INSERT INTO registration (ID_registration, ID_student, ID_class, registered_at, registration_status)
-     VALUES (LEFT(CONVERT(VARCHAR(36), NEWID()), 16), @maSV, @maLop, GETDATE(), 'REGISTERED')`
+     VALUES (@regId, @maSV, @maLop, GETDATE(), 'REGISTERED')`
   );
 }
 
