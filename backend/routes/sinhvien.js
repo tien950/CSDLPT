@@ -36,18 +36,18 @@ async function safeGetPool(nodeKey) {
 }
 
 async function fetchStudentHeadquarterId(nodeKey, studentId) {
-  const pool = await safeGetPool(nodeKey);
-  const request = createRequest(nodeKey, null, pool);
-  request.input('studentId', ID_TYPE, studentId);
-  const result = await request.query(
-    `SELECT h.ID_headquarter AS headquarterId
-     FROM student s
-     JOIN department d ON d.ID_department = s.ID_department
-     JOIN headquarter h ON h.ID_headquarter = d.ID_headquarter
-     WHERE s.ID_student = @studentId`
-  );
-  return result.recordset[0]?.headquarterId ?? null;
-}
+   const pool = await safeGetPool(nodeKey);
+   const request = createRequest(nodeKey, null, pool);
+   request.input('studentId', ID_TYPE, studentId);
+   const result = await request.query(
+     `SELECT h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS AS headquarterId
+      FROM student s
+      JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+      JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+      WHERE s.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @studentId COLLATE SQL_Latin1_General_CP1_CI_AS`
+   );
+   return result.recordset[0]?.headquarterId ?? null;
+ }
 
 router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const maSV = req.user?.id;
