@@ -6,6 +6,14 @@ import dangkyRoutes from './routes/dangky.js';
 import hocphanRoutes from './routes/hocphan.js';
 import nodesRoutes from './routes/nodes.js';
 import sinhvienRoutes from './routes/sinhvien.js';
+import adminRoutes from './routes/admin.js';
+import thongkeRoutes from './routes/thongke.js';
+import cosoRoutes from './routes/coso.js';
+import giangvienRoutes from './routes/giangvien.js';
+import lophocphanRoutes from './routes/lophocphan.js';
+import phonghocRoutes from './routes/phonghoc.js';
+import lichhocRoutes from './routes/lichhoc.js';
+import thoikhoabieuRoutes from './routes/thoikhoabieu.js';
 import { closePools } from './config/db.js';
 import { nodeKeys } from './config/nodes.js';
 import { getPool } from './config/db.js';
@@ -53,6 +61,14 @@ app.use('/api/dangky', dangkyRoutes);
 app.use('/api/hocphan', hocphanRoutes);
 app.use('/api/nodes', nodesRoutes);
 app.use('/api/sinhvien', sinhvienRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/thongke', thongkeRoutes);
+app.use('/api/coso', cosoRoutes);
+app.use('/api/giangvien', giangvienRoutes);
+app.use('/api/lophocphan', lophocphanRoutes);
+app.use('/api/phonghoc', phonghocRoutes);
+app.use('/api/lichhoc', lichhocRoutes);
+app.use('/api/thoikhoabieu', thoikhoabieuRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

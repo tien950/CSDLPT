@@ -2,8 +2,9 @@ import express from 'express';
 import sql from 'mssql';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { getPool } from '../config/db.js';
-import { normalizeNodeKey, getHeadquarterId } from '../config/nodes.js';
+import { normalizeNodeKey, getHeadquarterId, isValidNode } from '../config/nodes.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
+import { deleteRow, insertRow, queryRows, updateRow } from '../utils/tableCrud.js';
 
 const router = express.Router();
 const ID_TYPE = sql.NVarChar(50);
@@ -36,18 +37,83 @@ async function safeGetPool(nodeKey) {
 }
 
 async function fetchStudentHeadquarterId(nodeKey, studentId) {
-   const pool = await safeGetPool(nodeKey);
-   const request = createRequest(nodeKey, null, pool);
-   request.input('studentId', ID_TYPE, studentId);
-   const result = await request.query(
-     `SELECT h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS AS headquarterId
-      FROM student s
-      JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
-      JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
-      WHERE s.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @studentId COLLATE SQL_Latin1_General_CP1_CI_AS`
-   );
-   return result.recordset[0]?.headquarterId ?? null;
- }
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  request.input('studentId', ID_TYPE, studentId);
+  const result = await request.query(
+    `SELECT h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS AS headquarterId
+     FROM student s
+     JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+     WHERE s.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @studentId COLLATE SQL_Latin1_General_CP1_CI_AS`
+  );
+  return result.recordset[0]?.headquarterId ?? null;
+}
+
+function resolveNode(req) {
+  const requested = normalizeNodeKey(req.query.maCS ?? req.query.ID_headquarter ?? req.body?.ID_headquarter);
+  const userNode = normalizeNodeKey(req.user?.maCS);
+  if (req.user?.role === 'quantrivien' && requested && isValidNode(requested)) {
+    return requested;
+  }
+  return userNode;
+}
+
+router.get('/', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+  const nodeKey = resolveNode(req);
+  if (!nodeKey) {
+    return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
+  }
+
+  try {
+    const { rows } = await queryRows(nodeKey, 'student', {}, 500);
+    return res.json({ success: true, data: rows });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.post('/', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+  const nodeKey = resolveNode(req);
+  if (!nodeKey) {
+    return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
+  }
+
+  try {
+    await insertRow(nodeKey, 'student', req.body ?? {});
+    return res.json({ success: true });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.put('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+  const nodeKey = resolveNode(req);
+  if (!nodeKey) {
+    return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
+  }
+
+  try {
+    await updateRow(nodeKey, 'student', req.body ?? {}, { ID_student: req.params.id });
+    return res.json({ success: true });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.delete('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+  const nodeKey = resolveNode(req);
+  if (!nodeKey) {
+    return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
+  }
+
+  try {
+    await deleteRow(nodeKey, 'student', { ID_student: req.params.id });
+    return res.json({ success: true });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
 
 router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const maSV = req.user?.id;
@@ -125,6 +191,23 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
         offlineNodes: []
       }
     });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.get('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+  const nodeKey = resolveNode(req);
+  if (!nodeKey) {
+    return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
+  }
+
+  try {
+    const { rows } = await queryRows(nodeKey, 'student', { ID_student: req.params.id }, 1);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sinh viên.' });
+    }
+    return res.json({ success: true, data: rows[0] });
   } catch (error) {
     return sendError(res, error);
   }

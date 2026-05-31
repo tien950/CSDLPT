@@ -75,6 +75,8 @@ export default function Login({ apiBase, onLogin }) {
             <li><strong>Sinh viên:</strong> b22attt001 / 123456</li>
             <li><strong>Giảng viên:</strong> gv_hd_01 / gv123</li>
             <li><strong>Nhân viên:</strong> nv_hl_01 / nv123</li>
+            <li><strong>Nhân viên:</strong> nv_hd_01 / nv123</li>
+            <li><strong>Nhân viên:</strong> nv_hcm_01 / nv123</li>
             <li><strong>Quản trị viên:</strong> qtv_01 / qtv123</li>
           </ul>
         </div>

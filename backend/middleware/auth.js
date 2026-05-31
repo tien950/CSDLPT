@@ -24,7 +24,9 @@ export function authenticate(req, res, next) {
     req.user = {
       id: payload.id,
       role: payload.role,
-      maCS: payload.maCS
+      maCS: payload.maCS ?? payload.ID_headquarter,
+      ID_headquarter: payload.ID_headquarter ?? payload.maCS,
+      ID_user: payload.ID_user ?? payload.id
     };
     return next();
   } catch (error) {
