@@ -5,6 +5,30 @@ function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('vi-VN');
 }
 
+function formatTime(timeStr) {
+  if (!timeStr) return '-';
+  try {
+    // Try to extract HH:MM:SS directly from string (handles TIME format "09:15:00")
+    const match = timeStr.match(/(\d{1,2}):(\d{2}):(\d{2})/);
+    if (match) {
+      const hours = String(parseInt(match[1], 10)).padStart(2, '0');
+      const minutes = String(parseInt(match[2], 10)).padStart(2, '0');
+      return `${hours}:${minutes}`;
+    }
+    
+    // Fallback: parse ISO date and adjust for Vietnam timezone (UTC+7)
+    const date = new Date(timeStr);
+    if (isNaN(date.getTime())) return timeStr;
+    
+    const vietnamTime = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+    const hours = String(vietnamTime.getUTCHours()).padStart(2, '0');
+    const minutes = String(vietnamTime.getUTCMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  } catch {
+    return timeStr;
+  }
+}
+
 function getStatusColor(status) {
   switch (status) {
     case 'REGISTERED':
@@ -76,8 +100,20 @@ export default function DanhSachDangKy({ apiBase, token }) {
 
       if (!regData.success) {
         setError(prev => prev ? prev + ' | ' + (regData.message || 'Lỗi tải danh sách đã đăng ký') : (regData.message || 'Lỗi tải danh sách đã đăng ký'));
+        setRegistered([]);
       } else {
-        setRegistered(regData.data || []);
+        // Map Vietnamese column names from stored procedure
+        const mapped = (regData.data || []).map(row => ({
+          maDangKy: row['Mã đăng ký'] ?? row.maDangKy ?? row.id_registration,
+          maMH: row['Mã lớp học phần'] ?? row.maMH ?? row.id_class,
+          tenMonHoc: row['Tên học phần'] ?? row.tenMonHoc ?? row.subject_name,
+          soTC: row['Số tín chỉ'] ?? row.soTC ?? row.credit,
+          nhom: row['Nhóm'] ?? row.nhom ?? row.group_number,
+          giangVien: row['Giảng viên'] ?? row.giangVien ?? row.teacher_name,
+          ngayDangKy: row['Thời gian đăng ký'] ?? row.ngayDangKy ?? row.registered_at,
+          trangThai: row['Trạng thái'] ?? row.trangThai ?? row.registration_status
+        }));
+        setRegistered(mapped);
       }
     } catch (err) {
       setError('Có lỗi khi tải dữ liệu: ' + err.message);
@@ -281,6 +317,7 @@ export default function DanhSachDangKy({ apiBase, token }) {
                     <th style={{ padding: '6px', textAlign: 'left' }}>Ca Học</th>
                     <th style={{ padding: '6px', textAlign: 'left' }}>Giờ</th>
                     <th style={{ padding: '6px', textAlign: 'left' }}>Phòng Học</th>
+                    <th style={{ padding: '6px', textAlign: 'left' }}>Ghi Chú</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -289,8 +326,11 @@ export default function DanhSachDangKy({ apiBase, token }) {
                       <td style={{ padding: '6px' }}>{formatDate(sess.ngayHoc)}</td>
                       <td style={{ padding: '6px' }}>Thứ {sess.thuHoc}</td>
                       <td style={{ padding: '6px' }}>Ca {sess.caHoc}</td>
-                      <td style={{ padding: '6px' }}>{sess.gioStart} - {sess.gioEnd}</td>
+                      <td style={{ padding: '6px' }}>{formatTime(sess.gioStart) } - {formatTime(sess.gioEnd)}</td>
                       <td style={{ padding: '6px' }}>{sess.phongHoc}</td>
+                      <td style={{ padding: '6px', fontSize: '0.85rem', color: '#666', fontStyle: 'italic' }}>
+                        {sess.ghiChu || '-'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -300,64 +340,72 @@ export default function DanhSachDangKy({ apiBase, token }) {
         )}
       </div>
 
-      <div>
-        <h3 style={{ color: '#1976d2', borderBottom: '3px solid #1976d2', paddingBottom: '8px' }}>
-          Danh Sách Môn Học Đã Đăng Ký
-        </h3>
-        {registered.length === 0 ? (
-          <p style={{ color: '#999' }}>Chưa đăng ký môn học nào.</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f5f5f5', borderBottom: '2px solid #1976d2' }}>
-                <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Xóa</th>
-                <th style={{ padding: '8px', textAlign: 'left', fontWeight: 'bold' }}>Mã MH</th>
-                <th style={{ padding: '8px', textAlign: 'left', fontWeight: 'bold' }}>Tên Môn Học</th>
-                <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Nhóm</th>
-                <th style={{ padding: '8px', textAlign: 'left', fontWeight: 'bold' }}>Giảng Viên</th>
-                <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Số TC</th>
-                <th style={{ padding: '8px', textAlign: 'left', fontWeight: 'bold' }}>Ngày Đăng Ký</th>
-                <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Trạng Thái</th>
-              </tr>
-            </thead>
-            <tbody>
-              {registered.map((reg, idx) => (
-                <tr key={idx} style={{ borderBottom: '1px solid #eee', opacity: reg.trangThai === 'CANCELLED' ? 0.6 : 1 }}>
-                  <td style={{ padding: '8px', textAlign: 'center' }}>
-                    {reg.trangThai === 'REGISTERED' && (
-                      <button
-                        onClick={() => handleCancel(reg.maDangKy)}
-                        disabled={cancelling === reg.maDangKy}
-                        style={{
-                          padding: '4px 8px',
-                          backgroundColor: '#d32f2f',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: cancelling === reg.maDangKy ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        {cancelling === reg.maDangKy ? '...' : '×'}
-                      </button>
-                    )}
-                  </td>
-                  <td style={{ padding: '8px' }}>{reg.maMH}</td>
-                  <td style={{ padding: '8px' }}>{reg.tenMonHoc}</td>
-                  <td style={{ padding: '8px', textAlign: 'center' }}>{reg.nhom}</td>
-                  <td style={{ padding: '8px' }}>{reg.giangVien}</td>
-                  <td style={{ padding: '8px', textAlign: 'center' }}>{reg.soTC}</td>
-                  <td style={{ padding: '8px' }}>{formatDate(reg.ngayDangKy)}</td>
-                  <td style={{ padding: '8px', textAlign: 'center' }}>
-                    <span className={`status-${getStatusColor(reg.trangThai)}`} style={{ fontWeight: 'bold' }}>
-                      {getStatusLabel(reg.trangThai)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+       <div>
+         <h3 style={{ color: '#1976d2', borderBottom: '3px solid #1976d2', paddingBottom: '8px' }}>
+           Danh Sách Môn Học Đã Đăng Ký
+         </h3>
+         {registered.length === 0 ? (
+           <p style={{ color: '#999' }}>Chưa đăng ký môn học nào.</p>
+         ) : (
+           <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
+             <thead>
+               <tr style={{ backgroundColor: '#f5f5f5', borderBottom: '2px solid #1976d2' }}>
+                 <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Xóa</th>
+                 <th style={{ padding: '8px', textAlign: 'left', fontWeight: 'bold' }}>Mã Lớp</th>
+                 <th style={{ padding: '8px', textAlign: 'left', fontWeight: 'bold' }}>Tên Môn Học</th>
+                 <th style={{ padding: '8px', textAlign: 'left', fontWeight: 'bold' }}>Giảng Viên</th>
+                 <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Số TC</th>
+                 <th style={{ padding: '8px', textAlign: 'left', fontWeight: 'bold' }}>Ngày Đăng Ký</th>
+                 <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Trạng Thái</th>
+               </tr>
+             </thead>
+             <tbody>
+               {registered.map((reg, idx) => {
+                 const trangThai = reg['Trạng thái'] ?? reg.trangThai ?? reg['Trạng Thái'];
+                 const maDangKy = reg['Mã đăng ký'] ?? reg.maDangKy ?? reg.id_registration;
+                 const maLop = reg['Mã lớp học phần'] ?? reg.maMH ?? reg.id_class;
+                 const tenMon = reg['Tên học phần'] ?? reg.tenMonHoc ?? reg.subject_name;
+                 const giangVien = reg['Giảng viên'] ?? reg.giangVien ?? reg.teacher_name;
+                 const soTC = reg['Số tín chỉ'] ?? reg.soTC ?? reg.credit;
+                 const ngayDK = reg['Thời gian đăng ký'] ?? reg.ngayDangKy ?? reg.registered_at;
+
+                 return (
+                   <tr key={idx} style={{ borderBottom: '1px solid #eee', opacity: trangThai === 'CANCELLED' ? 0.6 : 1 }}>
+                     <td style={{ padding: '8px', textAlign: 'center' }}>
+                       {trangThai === 'REGISTERED' && (
+                         <button
+                           onClick={() => handleCancel(maDangKy)}
+                           disabled={cancelling === maDangKy}
+                           style={{
+                             padding: '4px 8px',
+                             backgroundColor: '#d32f2f',
+                             color: 'white',
+                             border: 'none',
+                             borderRadius: '4px',
+                             cursor: cancelling === maDangKy ? 'not-allowed' : 'pointer'
+                           }}
+                         >
+                           {cancelling === maDangKy ? '...' : '×'}
+                         </button>
+                       )}
+                     </td>
+                     <td style={{ padding: '8px' }}>{maLop}</td>
+                     <td style={{ padding: '8px' }}>{tenMon}</td>
+                     <td style={{ padding: '8px' }}>{giangVien}</td>
+                     <td style={{ padding: '8px', textAlign: 'center' }}>{soTC}</td>
+                     <td style={{ padding: '8px' }}>{formatDate(ngayDK)}</td>
+                     <td style={{ padding: '8px', textAlign: 'center' }}>
+                       <span className={`status-${getStatusColor(trangThai)}`} style={{ fontWeight: 'bold' }}>
+                         {getStatusLabel(trangThai)}
+                       </span>
+                     </td>
+                   </tr>
+                 );
+               })}
+             </tbody>
+           </table>
+         )}
+       </div>
     </section>
   );
 }

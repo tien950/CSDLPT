@@ -7,14 +7,46 @@ import hocphanRoutes from './routes/hocphan.js';
 import nodesRoutes from './routes/nodes.js';
 import sinhvienRoutes from './routes/sinhvien.js';
 import { closePools } from './config/db.js';
+import { nodeKeys } from './config/nodes.js';
+import { getPool } from './config/db.js';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 
+// simple timing logger to detect slow endpoints
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    if (ms > 500) {
+      console.warn(`[SLOW] ${req.method} ${req.originalUrl} took ${ms}ms`);
+    }
+    // light info-level log
+    console.log(`${req.method} ${req.originalUrl} -> ${res.statusCode} ${ms}ms`);
+  });
+  next();
+});
+
 app.use(cors());
 app.use(express.json());
+
+// health endpoint: quick check of DB node connectivity
+app.get('/api/health', async (req, res) => {
+  const statuses = {};
+  await Promise.all(nodeKeys.map(async key => {
+    try {
+      const pool = await getPool(key);
+      // quick lightweight query
+      await pool.request().query('SELECT 1 AS ok');
+      statuses[key] = { ok: true };
+    } catch (err) {
+      statuses[key] = { ok: false, message: err.message };
+    }
+  }));
+  res.json({ success: true, nodes: statuses });
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/dangky', dangkyRoutes);

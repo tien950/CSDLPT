@@ -128,6 +128,7 @@ router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async 
          s.ID_session AS ID_session,
          s.study_date AS ngayHoc,
          s.day_of_week AS thuHoc,
+         s.note AS ghiChu,
          ts.shift_no AS caHoc,
          ts.start_time AS gioStart,
          ts.end_time AS gioEnd,

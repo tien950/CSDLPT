@@ -32,7 +32,8 @@ function buildConfig(nodeKey) {
     server: node.server,
     database: node.database,
     pool: {
-      max: 10,
+      // increase pool size to handle higher concurrency
+      max: 20,
       min: 0,
       idleTimeoutMillis: 30000
     },
