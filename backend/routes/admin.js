@@ -11,6 +11,7 @@ const COLLATION = 'SQL_Latin1_General_CP1_CI_AS';
 const ALLOWED_TABLES = {
   headquarter: 'Cơ sở đào tạo',
   department: 'Phòng ban',
+  curriculum: 'Chương trình đào tạo',
   student: 'Sinh viên',
   teacher: 'Giảng viên',
   subject: 'Học phần',
@@ -22,6 +23,7 @@ const ALLOWED_TABLES = {
 };
 
 const STRING_TYPES = new Set(['varchar', 'nvarchar', 'char', 'nchar', 'text', 'ntext']);
+const EXCLUDED_COLUMNS = new Set(['rowguid']);
 
 function sendError(res, error) {
   if (isOfflineError(error)) {
@@ -205,7 +207,9 @@ async function getTableMeta(nodeKey, table) {
     identityResult.recordset.filter(row => row.isIdentity).map(row => row.COLUMN_NAME)
   );
 
-  const columns = columnsResult.recordset.map(row => ({
+  const columns = columnsResult.recordset
+    .filter(row => !EXCLUDED_COLUMNS.has(String(row.COLUMN_NAME).toLowerCase()))
+    .map(row => ({
     name: row.COLUMN_NAME,
     dataType: row.DATA_TYPE,
     isNullable: row.IS_NULLABLE === 'YES',
@@ -216,10 +220,14 @@ async function getTableMeta(nodeKey, table) {
     isString: STRING_TYPES.has(String(row.DATA_TYPE).toLowerCase())
   }));
 
+  const primaryKeys = primaryKeyResult.recordset
+    .map(row => row.COLUMN_NAME)
+    .filter(columnName => !EXCLUDED_COLUMNS.has(String(columnName).toLowerCase()));
+
   return {
     table,
     columns,
-    primaryKeys: primaryKeyResult.recordset.map(row => row.COLUMN_NAME)
+    primaryKeys
   };
 }
 
@@ -292,11 +300,12 @@ router.get('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), as
     const orderBy = meta.primaryKeys.length > 0
       ? ` ORDER BY ${meta.primaryKeys.map(key => `[${key}]`).join(', ')}`
       : '';
+    const selectColumns = meta.columns.map(column => `[${column.name}]`).join(', ');
 
     const pool = await safeGetPool(nodeKey);
     const request = createRequest(nodeKey, null, pool);
     const result = await request.query(
-      `SELECT TOP (${limit}) * FROM [${table}]${orderBy}`
+      `SELECT TOP (${limit}) ${selectColumns} FROM [${table}]${orderBy}`
     );
 
     return res.json({ success: true, data: result.recordset, meta });

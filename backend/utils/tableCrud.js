@@ -4,6 +4,7 @@ import { createRequest, withNode } from './db.js';
 
 const STRING_TYPES = new Set(['varchar', 'nvarchar', 'char', 'nchar', 'text', 'ntext']);
 const NUMBER_TYPES = new Set(['int', 'bigint', 'smallint', 'tinyint', 'decimal', 'numeric', 'float', 'real']);
+const EXCLUDED_COLUMNS = new Set(['rowguid']);
 
 export const COLLATION = 'SQL_Latin1_General_CP1_CI_AS';
 
@@ -162,7 +163,9 @@ export async function getTableMeta(nodeKey, table) {
     identityResult.recordset.filter(row => row.isIdentity).map(row => row.COLUMN_NAME)
   );
 
-  const columns = columnsResult.recordset.map(row => ({
+  const columns = columnsResult.recordset
+    .filter(row => !EXCLUDED_COLUMNS.has(String(row.COLUMN_NAME).toLowerCase()))
+    .map(row => ({
     name: row.COLUMN_NAME,
     dataType: row.DATA_TYPE,
     isNullable: row.IS_NULLABLE === 'YES',
@@ -173,10 +176,14 @@ export async function getTableMeta(nodeKey, table) {
     isString: STRING_TYPES.has(String(row.DATA_TYPE).toLowerCase())
   }));
 
+  const primaryKeys = primaryKeyResult.recordset
+    .map(row => row.COLUMN_NAME)
+    .filter(columnName => !EXCLUDED_COLUMNS.has(String(columnName).toLowerCase()));
+
   return {
     table,
     columns,
-    primaryKeys: primaryKeyResult.recordset.map(row => row.COLUMN_NAME)
+    primaryKeys
   };
 }
 
@@ -199,8 +206,9 @@ export async function queryRows(nodeKey, table, filters = {}, limit = 200) {
     : '';
 
   const whereSql = whereClause ? ` WHERE ${whereClause}` : '';
+  const selectColumns = meta.columns.map(column => `[${column.name}]`).join(', ');
   const result = await request.query(
-    `SELECT TOP (${limit}) * FROM [${table}]${whereSql}${orderBy}`
+    `SELECT TOP (${limit}) ${selectColumns} FROM [${table}]${whereSql}${orderBy}`
   );
 
   return { rows: result.recordset, meta };

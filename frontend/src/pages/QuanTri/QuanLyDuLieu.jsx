@@ -7,6 +7,123 @@ const NODE_OPTIONS = [
 ];
 
 const NUMBER_TYPES = new Set(['int', 'bigint', 'smallint', 'tinyint', 'decimal', 'numeric', 'float', 'real']);
+const EXCLUDED_COLUMNS = new Set(['rowguid']);
+const GENDER_OPTIONS = [
+  { value: 'Nam', label: 'Nam' },
+  { value: 'Nữ', label: 'Nữ' },
+  { value: 'Khác', label: 'Khác' }
+];
+const DEGREE_OPTIONS = [
+  { value: 'Tiến sĩ', label: 'Tiến sĩ' },
+  { value: 'Thạc sĩ', label: 'Thạc sĩ' },
+  { value: 'Cử nhân', label: 'Cử nhân' },
+  { value: 'Kỹ sư', label: 'Kỹ sư' },
+  { value: 'Cao đẳng', label: 'Cao đẳng' },
+  { value: 'Trung cấp', label: 'Trung cấp' }
+];
+
+function normalizeColumnName(name) {
+  return String(name ?? '').toLowerCase();
+}
+
+function isGenderColumn(columnName) {
+  const name = normalizeColumnName(columnName);
+  return name.includes('gender') || name.includes('gioitinh') || name.includes('gioi_tinh') || name.includes('sex');
+}
+
+function isDepartmentColumn(columnName) {
+  const name = normalizeColumnName(columnName);
+  return name.includes('department') || name.includes('phong_ban') || name.includes('phongban');
+}
+
+function isCurriculumColumn(columnName) {
+  const name = normalizeColumnName(columnName);
+  return name.includes('curriculum') || name.includes('chuong_trinh') || name.includes('program');
+}
+
+function isDegreeColumn(columnName) {
+  const name = normalizeColumnName(columnName);
+  return name === 'degree' || name.includes('degree') || name.includes('trinh_do') || name.includes('trình_độ');
+}
+
+function isDateColumn(column) {
+  const name = normalizeColumnName(column?.name);
+  const type = normalizeColumnName(column?.dataType);
+  return (
+    ['date', 'datetime', 'datetime2', 'smalldatetime'].includes(type) ||
+    name.includes('birth') ||
+    name.includes('dob') ||
+    name.includes('ngay_sinh') ||
+    name.includes('birthday')
+  );
+}
+
+function toDateInputValue(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const stringValue = String(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) return stringValue;
+  const match = stringValue.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  const date = new Date(stringValue);
+  if (Number.isNaN(date.getTime())) return stringValue;
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDateDisplay(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+}
+
+function getOptionValue(row) {
+  if (row === null || row === undefined) return '';
+  if (Object.prototype.hasOwnProperty.call(row, 'ID_department')) return row.ID_department ?? '';
+  const idKey = Object.keys(row).find(key => normalizeColumnName(key).startsWith('id_'));
+  if (idKey) return row[idKey] ?? '';
+  return Object.values(row)[0] ?? '';
+}
+
+function getOptionLabel(row) {
+  if (row === null || row === undefined) return '';
+  const entries = Object.entries(row).filter(([key, value]) => {
+    if (value === null || value === undefined || value === '') return false;
+    return !EXCLUDED_COLUMNS.has(normalizeColumnName(key));
+  });
+
+  const idEntry = entries.find(([key]) => normalizeColumnName(key).startsWith('id_'));
+  const labelEntry = entries.find(([key]) => !normalizeColumnName(key).startsWith('id_'));
+
+  if (!idEntry && !labelEntry) return '';
+  if (!idEntry) return String(labelEntry[1]);
+  if (!labelEntry) return String(idEntry[1]);
+  if (String(idEntry[1]) === String(labelEntry[1])) return String(idEntry[1]);
+  return `${idEntry[1]} - ${labelEntry[1]}`;
+}
+
+function getCurriculumOptionValue(row) {
+  if (row === null || row === undefined) return '';
+  if (Object.prototype.hasOwnProperty.call(row, 'ID_curriculum')) return row.ID_curriculum ?? '';
+  const idKey = Object.keys(row).find(key => normalizeColumnName(key).startsWith('id_'));
+  if (idKey) return row[idKey] ?? '';
+  return Object.values(row)[0] ?? '';
+}
+
+function getCurriculumOptionLabel(row) {
+  if (row === null || row === undefined) return '';
+  const preferredKeys = ['name_curriculum', 'curriculum_name', 'ten_curriculum', 'name_program', 'program_name'];
+  for (const key of preferredKeys) {
+    if (Object.prototype.hasOwnProperty.call(row, key) && row[key]) {
+      return String(row[key]);
+    }
+  }
+  return getOptionLabel(row) || String(getCurriculumOptionValue(row));
+}
 
 function normalizeValue(value, dataType) {
   if (value === '' || value === undefined) return null;
@@ -27,8 +144,9 @@ function normalizeValue(value, dataType) {
   return value;
 }
 
-function formatValue(value) {
+function formatValue(value, column) {
   if (value === null || value === undefined) return '';
+  if (isDateColumn(column)) return formatDateDisplay(value);
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
 }
@@ -39,6 +157,8 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
   const [nodeKey, setNodeKey] = useState(user?.maCS ?? 'HQHD');
   const [meta, setMeta] = useState(null);
   const [rows, setRows] = useState([]);
+  const [departmentOptions, setDepartmentOptions] = useState([]);
+  const [curriculumOptions, setCurriculumOptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -49,6 +169,10 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
 
   const primaryKeys = useMemo(() => meta?.primaryKeys ?? [], [meta]);
   const primaryKeySet = useMemo(() => new Set(primaryKeys), [primaryKeys]);
+  const visibleColumns = useMemo(
+    () => (meta?.columns ?? []).filter(column => !EXCLUDED_COLUMNS.has(String(column.name).toLowerCase())),
+    [meta]
+  );
 
   useEffect(() => {
     const fetchTables = async () => {
@@ -113,6 +237,48 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
     fetchData();
   }, [apiBase, token, selectedTable, nodeKey, canPickNode]);
 
+  useEffect(() => {
+    const fetchDepartmentOptions = async () => {
+      try {
+        const query = canPickNode ? `?maCS=${nodeKey}` : '';
+        const res = await fetch(`${apiBase}/api/admin/department${query}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          setDepartmentOptions(data.data ?? []);
+        } else {
+          setDepartmentOptions([]);
+        }
+      } catch {
+        setDepartmentOptions([]);
+      }
+    };
+
+    fetchDepartmentOptions();
+  }, [apiBase, token, nodeKey, canPickNode, selectedTable]);
+
+  useEffect(() => {
+    const fetchCurriculumOptions = async () => {
+      try {
+        const query = canPickNode ? `?maCS=${nodeKey}` : '';
+        const res = await fetch(`${apiBase}/api/admin/curriculum${query}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          setCurriculumOptions(data.data ?? []);
+        } else {
+          setCurriculumOptions([]);
+        }
+      } catch {
+        setCurriculumOptions([]);
+      }
+    };
+
+    fetchCurriculumOptions();
+  }, [apiBase, token, nodeKey, canPickNode, selectedTable]);
+
   const handleInputChange = (columnName, value) => {
     setFormData(prev => ({
       ...prev,
@@ -133,9 +299,9 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
     setEditKeys(keys);
 
     const nextForm = {};
-    (meta?.columns ?? []).forEach(column => {
+    visibleColumns.forEach(column => {
       if (column.isIdentity) return;
-      nextForm[column.name] = row[column.name] ?? '';
+      nextForm[column.name] = isDateColumn(column) ? toDateInputValue(row[column.name]) : (row[column.name] ?? '');
     });
     setFormData(nextForm);
   };
@@ -185,7 +351,7 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
     event.preventDefault();
     if (!meta) return;
 
-    const columns = meta.columns ?? [];
+    const columns = visibleColumns;
     const payload = {};
     columns.forEach(column => {
       if (column.isIdentity) return;
@@ -239,9 +405,130 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
   };
 
   const editableColumns = useMemo(
-    () => (meta?.columns ?? []).filter(column => !column.isIdentity),
-    [meta]
+    () => visibleColumns.filter(column => !column.isIdentity),
+    [visibleColumns]
   );
+
+  const renderField = (column) => {
+    const type = normalizeColumnName(column.dataType);
+    const fieldName = column.name;
+    const isGender = isGenderColumn(fieldName);
+    const isDepartment = isDepartmentColumn(fieldName);
+    const isCurriculum = isCurriculumColumn(fieldName);
+    const isDegree = isDegreeColumn(fieldName);
+    const isDate = isDateColumn(column);
+
+    if (isGender) {
+      return (
+        <select
+          value={formData[fieldName] ?? ''}
+          onChange={event => handleInputChange(fieldName, event.target.value)}
+          disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
+        >
+          <option value="">-</option>
+          {GENDER_OPTIONS.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      );
+    }
+
+    if (isDepartment) {
+      return (
+        <select
+          value={formData[fieldName] ?? ''}
+          onChange={event => handleInputChange(fieldName, event.target.value)}
+          disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
+        >
+          <option value="">-</option>
+          {departmentOptions.map((option, index) => {
+            const value = getOptionValue(option);
+            const label = getOptionLabel(option) || String(value || `Mục ${index + 1}`);
+            return (
+              <option key={`${value}-${index}`} value={value}>
+                {label}
+              </option>
+            );
+          })}
+        </select>
+      );
+    }
+
+    if (isCurriculum) {
+      return (
+        <select
+          value={formData[fieldName] ?? ''}
+          onChange={event => handleInputChange(fieldName, event.target.value)}
+          disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
+        >
+          <option value="">-</option>
+          {curriculumOptions.map((option, index) => {
+            const value = getCurriculumOptionValue(option);
+            const label = getCurriculumOptionLabel(option) || String(value || `Mục ${index + 1}`);
+            return (
+              <option key={`${value}-${index}`} value={value}>
+                {label}
+              </option>
+            );
+          })}
+        </select>
+      );
+    }
+
+    if (isDegree) {
+      return (
+        <select
+          value={formData[fieldName] ?? ''}
+          onChange={event => handleInputChange(fieldName, event.target.value)}
+          disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
+        >
+          <option value="">-</option>
+          {DEGREE_OPTIONS.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      );
+    }
+
+    if (isDate) {
+      return (
+        <input
+          type="date"
+          value={formData[fieldName] ?? ''}
+          onChange={event => handleInputChange(fieldName, event.target.value)}
+          disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
+        />
+      );
+    }
+
+    if (type === 'bit') {
+      return (
+        <select
+          value={
+            formData[fieldName] === true
+              ? 'true'
+              : formData[fieldName] === false
+                ? 'false'
+                : ''
+          }
+          onChange={event => handleInputChange(fieldName, event.target.value === 'true')}
+          disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
+        >
+          <option value="">-</option>
+          <option value="true">True</option>
+          <option value="false">False</option>
+        </select>
+      );
+    }
+
+    return (
+      <input
+        value={formData[fieldName] ?? ''}
+        onChange={event => handleInputChange(fieldName, event.target.value)}
+        disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
+      />
+    );
+  };
 
   return (
     <div className="stack">
@@ -292,7 +579,7 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
             <table className="data-table">
               <thead>
                 <tr>
-                  {(meta?.columns ?? []).map(column => (
+                  {visibleColumns.map(column => (
                     <th key={column.name}>{column.name}</th>
                   ))}
                   <th>Thao tác</th>
@@ -301,8 +588,8 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
               <tbody>
                 {rows.map((row, index) => (
                   <tr key={index}>
-                    {(meta?.columns ?? []).map(column => (
-                      <td key={column.name}>{formatValue(row[column.name])}</td>
+                    {visibleColumns.map(column => (
+                      <td key={column.name}>{formatValue(row[column.name], column)}</td>
                     ))}
                     <td>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -314,7 +601,7 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={(meta?.columns?.length ?? 0) + 1} style={{ textAlign: 'center', color: '#777' }}>
+                    <td colSpan={visibleColumns.length + 1} style={{ textAlign: 'center', color: '#777' }}>
                       Chưa có dữ liệu.
                     </td>
                   </tr>
@@ -331,29 +618,7 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
           {editableColumns.map(column => (
             <label key={column.name}>
               {column.name}
-              {column.dataType === 'bit' ? (
-                <select
-                  value={
-                    formData[column.name] === true
-                      ? 'true'
-                      : formData[column.name] === false
-                        ? 'false'
-                        : ''
-                  }
-                  onChange={event => handleInputChange(column.name, event.target.value === 'true')}
-                  disabled={Boolean(editKeys && primaryKeySet.has(column.name))}
-                >
-                  <option value="">-</option>
-                  <option value="true">True</option>
-                  <option value="false">False</option>
-                </select>
-              ) : (
-                <input
-                  value={formData[column.name] ?? ''}
-                  onChange={event => handleInputChange(column.name, event.target.value)}
-                  disabled={Boolean(editKeys && primaryKeySet.has(column.name))}
-                />
-              )}
+              {renderField(column)}
             </label>
           ))}
 
