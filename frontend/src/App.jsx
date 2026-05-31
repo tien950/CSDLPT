@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Login from './pages/Login.jsx';
 import DanhSachDangKy from './pages/SinhVien/DanhSachDangKy.jsx';
 import XemThoiKhoaBieu from './pages/SinhVien/XemThoiKhoaBieu.jsx';
 import GiamSatNode from './pages/QuanTri/GiamSatNode.jsx';
+import QuanLyDuLieu from './pages/QuanTri/QuanLyDuLieu.jsx';
+import ThongKe from './pages/QuanTri/ThongKe.jsx';
 
 const STORAGE_KEY = 'csdlpt.auth';
 
@@ -51,11 +53,25 @@ export default function App() {
     setAuth(null);
   };
 
+  const user = auth?.user;
+
+  useEffect(() => {
+    if (!user?.role) return;
+    if (user.role === 'sinhvien') {
+      setCurrentPage('danh-sach-dang-ky');
+    } else if (user.role === 'quantrivien') {
+      setCurrentPage('giam-sat-node');
+    } else if (user.role === 'nhanvien') {
+      setCurrentPage('quan-ly-du-lieu');
+    } else {
+      setCurrentPage('thong-ke');
+    }
+  }, [user?.role]);
+
   if (!auth?.token) {
     return <Login apiBase={apiBase} onLogin={handleLogin} />;
   }
 
-  const { user } = auth;
   const campusName = campusLabels[user.maCS] ?? user.maCS;
 
   return (
@@ -118,11 +134,79 @@ export default function App() {
         </>
       )}
 
-      {user.role === 'quantrivien' && (
-        <GiamSatNode apiBase={apiBase} token={auth.token} />
+      {(user.role === 'quantrivien' || user.role === 'nhanvien') && (
+        <>
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            marginBottom: '1.5rem',
+            borderBottom: '2px solid #f0f0f0'
+          }}>
+            {user.role === 'quantrivien' && (
+              <button
+                onClick={() => setCurrentPage('giam-sat-node')}
+                style={{
+                  padding: '12px 20px',
+                  backgroundColor: currentPage === 'giam-sat-node' ? '#1976d2' : 'transparent',
+                  color: currentPage === 'giam-sat-node' ? 'white' : '#666',
+                  border: 'none',
+                  borderBottom: currentPage === 'giam-sat-node' ? '3px solid #1976d2' : 'none',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: currentPage === 'giam-sat-node' ? 'bold' : 'normal',
+                  transition: 'all 0.3s'
+                }}
+              >
+                Giám Sát Node
+              </button>
+            )}
+            <button
+              onClick={() => setCurrentPage('quan-ly-du-lieu')}
+              style={{
+                padding: '12px 20px',
+                backgroundColor: currentPage === 'quan-ly-du-lieu' ? '#1976d2' : 'transparent',
+                color: currentPage === 'quan-ly-du-lieu' ? 'white' : '#666',
+                border: 'none',
+                borderBottom: currentPage === 'quan-ly-du-lieu' ? '3px solid #1976d2' : 'none',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                fontWeight: currentPage === 'quan-ly-du-lieu' ? 'bold' : 'normal',
+                transition: 'all 0.3s'
+              }}
+            >
+              Quản Lý Dữ Liệu
+            </button>
+            <button
+              onClick={() => setCurrentPage('thong-ke')}
+              style={{
+                padding: '12px 20px',
+                backgroundColor: currentPage === 'thong-ke' ? '#1976d2' : 'transparent',
+                color: currentPage === 'thong-ke' ? 'white' : '#666',
+                border: 'none',
+                borderBottom: currentPage === 'thong-ke' ? '3px solid #1976d2' : 'none',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                fontWeight: currentPage === 'thong-ke' ? 'bold' : 'normal',
+                transition: 'all 0.3s'
+              }}
+            >
+              Thống Kê
+            </button>
+          </div>
+
+          {currentPage === 'giam-sat-node' && user.role === 'quantrivien' && (
+            <GiamSatNode apiBase={apiBase} token={auth.token} />
+          )}
+          {currentPage === 'quan-ly-du-lieu' && (
+            <QuanLyDuLieu apiBase={apiBase} token={auth.token} user={user} />
+          )}
+          {currentPage === 'thong-ke' && (
+            <ThongKe apiBase={apiBase} token={auth.token} user={user} />
+          )}
+        </>
       )}
 
-      {user.role !== 'sinhvien' && user.role !== 'quantrivien' && (
+      {user.role !== 'sinhvien' && user.role !== 'quantrivien' && user.role !== 'nhanvien' && (
         <section className="card">
           <h2>Chưa có giao diện cho vai trò này</h2>
           <p>Vui lòng đăng nhập bằng tài khoản sinh viên hoặc quản trị viên.</p>

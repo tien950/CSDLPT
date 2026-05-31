@@ -1,7 +1,7 @@
 import express from 'express';
 import sql from 'mssql';
 import { getPool } from '../config/db.js';
-import { isValidNode, normalizeNodeKey, getHeadquarterId } from '../config/nodes.js';
+import { isValidNode, normalizeNodeKey, getHeadquarterId, getNodes } from '../config/nodes.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 
@@ -83,6 +83,46 @@ async function fetchClassHeadquarterId(nodeKey, classId) {
      WHERE c.ID_class = @classId COLLATE SQL_Latin1_General_CP1_CI_AS`
   );
   return result.recordset[0]?.headquarterId ?? null;
+}
+
+async function fetchAvailableClasses(nodeKey, termId) {
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  if (termId) {
+    request.input('termId', ID_TYPE, termId);
+  }
+
+  const termFilter = termId
+    ? 'AND c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = @termId COLLATE SQL_Latin1_General_CP1_CI_AS'
+    : '';
+
+  const result = await request.query(
+    `SELECT
+       c.ID_class AS ID_class,
+       c.group_number AS group_number,
+       c.max_students AS max_students,
+       c.number_of_registration AS number_of_registration,
+       (c.max_students - c.number_of_registration) AS remaining,
+       c.class_status AS class_status,
+       c.ID_term AS ID_term,
+       s.ID_subject AS ID_subject,
+       s.name_subject AS name_subject,
+       s.number_of_credit AS number_of_credit,
+       t.ID_teacher AS ID_teacher,
+       t.name_teacher AS name_teacher,
+       h.ID_headquarter AS ID_headquarter
+     FROM [class] c
+     JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+     WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
+       AND c.max_students > c.number_of_registration
+       ${termFilter}
+     ORDER BY c.ID_class`
+  );
+
+  return result.recordset;
 }
 
 router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
@@ -291,15 +331,15 @@ router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res)
   try {
     const pool = await safeGetPool(maCS);
 
-     // 1. Verify registration belongs to student
-     const verifyReq = createRequest(maCS, null, pool);
-     verifyReq.input('ID_registration', ID_TYPE, maDangKy);
-     verifyReq.input('ID_student', ID_TYPE, maSV);
-     const verifyResult = await verifyReq.query(
-       `SELECT ID_class, registration_status FROM registration 
-        WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS 
-          AND ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
-     );
+    // 1. Verify registration belongs to student
+    const verifyReq = createRequest(maCS, null, pool);
+    verifyReq.input('ID_registration', ID_TYPE, maDangKy);
+    verifyReq.input('ID_student', ID_TYPE, maSV);
+    const verifyResult = await verifyReq.query(
+      `SELECT ID_class, registration_status FROM registration 
+       WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS 
+         AND ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
+    );
 
     if (verifyResult.recordset.length === 0) {
       return res.status(404).json({
@@ -326,6 +366,142 @@ router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res)
     return res.json({
       success: true,
       message: 'Hủy đăng ký thành công.'
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.delete('/:maDangKy', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  const maDangKy = req.params.maDangKy;
+  const maSV = req.user?.id;
+  const maCS = normalizeNodeKey(req.user?.maCS);
+  const headquarterId = normalizeNodeKey(req.body?.ID_headquarter_sv ?? req.query.ID_headquarter_sv)
+    ?? (await fetchStudentHeadquarterId(maCS, maSV))
+    ?? getHeadquarterId(maCS)
+    ?? maCS;
+
+  if (!maSV || !maCS) {
+    return res.status(400).json({
+      success: false,
+      message: 'Thiếu thông tin sinh viên.'
+    });
+  }
+
+  if (!maDangKy) {
+    return res.status(400).json({
+      success: false,
+      message: 'Thiếu mã đăng ký.'
+    });
+  }
+
+  try {
+    const pool = await safeGetPool(maCS);
+
+    const verifyReq = createRequest(maCS, null, pool);
+    verifyReq.input('ID_registration', ID_TYPE, maDangKy);
+    verifyReq.input('ID_student', ID_TYPE, maSV);
+    const verifyResult = await verifyReq.query(
+      `SELECT ID_class, registration_status FROM registration 
+       WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS 
+         AND ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
+    );
+
+    if (verifyResult.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy đăng ký.'
+      });
+    }
+
+    const regStatus = verifyResult.recordset[0].registration_status;
+    if (regStatus === 'CANCELLED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Đăng ký này đã bị hủy rồi.'
+      });
+    }
+
+    const cancelReq = createRequest(maCS, null, pool);
+    cancelReq.input('ID_registration', ID_TYPE, maDangKy);
+    cancelReq.input('ID_headquarter', ID_TYPE, headquarterId);
+    await cancelReq.execute('usp_CancelRegistration');
+
+    return res.json({
+      success: true,
+      message: 'Hủy đăng ký thành công.'
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.get('/available', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  const termId = req.query.ID_term ?? null;
+  try {
+    const nodes = getNodes();
+    const results = [];
+    const offlineNodes = [];
+
+    await Promise.all(Object.keys(nodes).map(async nodeKey => {
+      try {
+        const rows = await fetchAvailableClasses(nodeKey, termId);
+        rows.forEach(row => {
+          results.push({
+            ...row,
+            node: nodeKey
+          });
+        });
+      } catch (error) {
+        const nodeError = withNode(nodeKey, error);
+        if (isOfflineError(nodeError)) {
+          offlineNodes.push(nodeKey);
+          return;
+        }
+        throw nodeError;
+      }
+    }));
+
+    return res.json({
+      success: true,
+      data: results,
+      meta: {
+        offlineNodes
+      }
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+router.get('/result', authenticate, requireRole(['sinhvien', 'nhanvien', 'quantrivien']), async (req, res) => {
+  const role = req.user?.role;
+  let studentId = req.query.ID_student;
+  let headquarterId = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS ?? req.user?.maCS);
+
+  if (role === 'sinhvien') {
+    studentId = req.user?.id;
+    headquarterId = normalizeNodeKey(req.user?.maCS);
+  }
+
+  if (!studentId || !headquarterId) {
+    return res.status(400).json({ success: false, message: 'Thiếu thông tin sinh viên hoặc cơ sở.' });
+  }
+
+  if (!isValidNode(headquarterId)) {
+    return res.status(400).json({ success: false, message: 'Mã cơ sở không hợp lệ.' });
+  }
+
+  try {
+    const pool = await safeGetPool(headquarterId);
+    const request = createRequest(headquarterId, null, pool);
+    request.input('ID_student', ID_TYPE, studentId);
+    request.input('ID_headquarter', ID_TYPE, headquarterId);
+    const result = await request.execute('usp_GetRegistrationResult');
+
+    return res.json({
+      success: true,
+      data: result.recordset
     });
   } catch (error) {
     return sendError(res, error);

@@ -36,7 +36,9 @@ router.post('/login', (req, res) => {
     {
       id: user.id,
       role: user.role,
-      maCS: user.maCS
+      maCS: user.maCS,
+      ID_headquarter: user.maCS,
+      ID_user: user.id
     },
     JWT_SECRET,
     { expiresIn: TOKEN_EXPIRES_IN }
@@ -46,11 +48,14 @@ router.post('/login', (req, res) => {
     success: true,
     data: {
       token,
+      role: user.role,
+      ID_headquarter: user.maCS,
+      ID_user: user.id,
       user: {
         id: user.id,
+        username: user.username,
         role: user.role,
-        maCS: user.maCS,
-        username: user.username
+        maCS: user.maCS
       }
     }
   });

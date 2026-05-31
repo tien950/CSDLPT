@@ -94,6 +94,19 @@ Truy cập: **http://localhost:5173**
 | nv_hl_01 | nv123 | Nhân viên | Hòa Lạc |
 | qtv_01 | qtv123 | Quản trị viên | Hà Đông |
 
+## ✅ Yêu Cầu Chức Năng Tối Thiểu
+
+- Quản lý cơ sở đào tạo
+- Quản lý sinh viên
+- Quản lý giảng viên
+- Quản lý học phần
+- Quản lý lớp học phần
+- Quản lý phòng học và lịch học
+- Đăng ký học phần
+- Hủy đăng ký học phần
+- Tra cứu kết quả đăng ký
+- Thống kê theo cơ sở và toàn trường
+
 ## 📱 Chức Năng Sinh Viên
 
 ### 1. Xem Danh Sách Môn Học
