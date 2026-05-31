@@ -44,7 +44,7 @@ export default function Login({ apiBase, onLogin }) {
               type="text"
               value={username}
               onChange={event => setUsername(event.target.value)}
-              placeholder="sv_hd_01"
+              placeholder="b22cntt005"
               required
             />
           </label>
@@ -55,7 +55,7 @@ export default function Login({ apiBase, onLogin }) {
               type="password"
               value={password}
               onChange={event => setPassword(event.target.value)}
-              placeholder="sv123"
+              placeholder="123456"
               required
             />
           </label>
@@ -70,10 +70,12 @@ export default function Login({ apiBase, onLogin }) {
         <div className="demo-list">
           <p>Tài khoản mẫu:</p>
           <ul>
-            <li>sv_hd_01 / sv123</li>
-            <li>sv_hl_01 / sv123</li>
-            <li>sv_hcm_01 / sv123</li>
-            <li>qtv_01 / qtv123</li>
+            <li><strong>Sinh viên:</strong> b22cntt005 / 123456</li>
+            <li><strong>Sinh viên:</strong> b22attt005 / 123456</li>
+            <li><strong>Sinh viên:</strong> b22attt001 / 123456</li>
+            <li><strong>Giảng viên:</strong> gv_hd_01 / gv123</li>
+            <li><strong>Nhân viên:</strong> nv_hl_01 / nv123</li>
+            <li><strong>Quản trị viên:</strong> qtv_01 / qtv123</li>
           </ul>
         </div>
       </div>

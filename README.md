@@ -48,6 +48,8 @@ registration - Đăng ký (qua student/class)
 ```bash
 cd csdlpt
 npm install
+cd frontend
+npm install
 ```
 
 ### 2. Cấu Hình File `.env`
@@ -75,6 +77,7 @@ JWT_SECRET=your_secret_key_here
 npm run server
 
 # Terminal 2: Frontend (React)
+cd frontend
 npm run dev
 ```
 

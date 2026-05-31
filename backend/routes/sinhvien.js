@@ -2,7 +2,7 @@ import express from 'express';
 import sql from 'mssql';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { getPool } from '../config/db.js';
-import { nodeKeys, normalizeNodeKey } from '../config/nodes.js';
+import { normalizeNodeKey, getHeadquarterId } from '../config/nodes.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 
 const router = express.Router();
@@ -35,19 +35,24 @@ async function safeGetPool(nodeKey) {
   }
 }
 
-function buildInClause(values, prefix) {
-  const params = [];
-  const placeholders = values.map((value, index) => {
-    const name = `${prefix}${index}`;
-    params.push({ name, value });
-    return `@${name}`;
-  });
-  return { clause: placeholders.join(', '), params };
+async function fetchStudentHeadquarterId(nodeKey, studentId) {
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  request.input('studentId', ID_TYPE, studentId);
+  const result = await request.query(
+    `SELECT h.ID_headquarter AS headquarterId
+     FROM student s
+     JOIN department d ON d.ID_department = s.ID_department
+     JOIN headquarter h ON h.ID_headquarter = d.ID_headquarter
+     WHERE s.ID_student = @studentId`
+  );
+  return result.recordset[0]?.headquarterId ?? null;
 }
 
 router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const maSV = req.user?.id;
   const maCS = normalizeNodeKey(req.user?.maCS);
+  const headquarterId = getHeadquarterId(maCS) ?? maCS;
 
   if (!maSV || !maCS) {
     return res.status(400).json({
@@ -58,26 +63,22 @@ router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req
 
   try {
     const pool = await safeGetPool(maCS);
+    const resolvedHeadquarter = (await fetchStudentHeadquarterId(maCS, maSV))
+      ?? getHeadquarterId(maCS)
+      ?? maCS;
+
     const request = createRequest(maCS, null, pool);
-    request.input('maSV', ID_TYPE, maSV);
-    const result = await request.query(
-      `SELECT 
-         r.ID_registration AS maDangKy,
-         r.ID_class AS maMH,
-         s.name_subject AS tenMonHoc,
-         s.number_of_credit AS soTC,
-         c.group_number AS nhom,
-         t.name_teacher AS giangVien,
-         r.registered_at AS ngayDangKy,
-         r.registration_status AS trangThai,
-         r.cancelled_at AS ngayHuy
-       FROM registration r
-       JOIN [class] c ON c.ID_class = r.ID_class
-       JOIN subject s ON s.ID_subject = c.ID_subject
-       JOIN teacher t ON t.ID_teacher = c.ID_teacher
-       WHERE r.ID_student = @maSV
-       ORDER BY r.registered_at DESC`
-    );
+    request.input('ID_student', ID_TYPE, maSV);
+    request.input('ID_headquarter', ID_TYPE, resolvedHeadquarter);
+
+    let result = await request.execute('usp_GetRegistrationResult');
+
+    if (result.recordset.length === 0 && resolvedHeadquarter) {
+      const fallbackRequest = createRequest(maCS, null, pool);
+      fallbackRequest.input('ID_student', ID_TYPE, maSV);
+      result = await fallbackRequest.execute('usp_GetRegistrationResult');
+    }
+
     return res.json({
       success: true,
       data: result.recordset
@@ -90,6 +91,7 @@ router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req
 router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const maSV = req.user?.id;
   const maCS = normalizeNodeKey(req.user?.maCS);
+  const headquarterId = getHeadquarterId(maCS) ?? maCS;
 
   if (!maSV || !maCS) {
     return res.status(400).json({
@@ -100,66 +102,27 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
 
   try {
     const pool = await safeGetPool(maCS);
+    const resolvedHeadquarter = (await fetchStudentHeadquarterId(maCS, maSV))
+      ?? getHeadquarterId(maCS)
+      ?? maCS;
+
     const request = createRequest(maCS, null, pool);
-    request.input('maSV', ID_TYPE, maSV);
-    const registrations = await request.query(
-      `SELECT ID_class
-       FROM registration
-       WHERE ID_student = @maSV`
-    );
+    request.input('ID_student', ID_TYPE, maSV);
+    request.input('ID_headquarter', ID_TYPE, resolvedHeadquarter);
 
-    const classIds = registrations.recordset.map(row => row.ID_class).filter(Boolean);
+    let result = await request.execute('usp_GetStudentTimetable');
 
-    if (classIds.length === 0) {
-      return res.json({
-        success: true,
-        data: [],
-        meta: {
-          offlineNodes: []
-        }
-      });
+    if (result.recordset.length === 0 && resolvedHeadquarter) {
+      const fallbackRequest = createRequest(maCS, null, pool);
+      fallbackRequest.input('ID_student', ID_TYPE, maSV);
+      result = await fallbackRequest.execute('usp_GetStudentTimetable');
     }
-
-    const perNodeResults = await Promise.all(
-      nodeKeys.map(async nodeKey => {
-        try {
-          const nodePool = await safeGetPool(nodeKey);
-          const nodeRequest = createRequest(nodeKey, null, nodePool);
-          const { clause, params } = buildInClause(classIds, `cls_${nodeKey}_`);
-          params.forEach(param => {
-            nodeRequest.input(param.name, ID_TYPE, param.value);
-          });
-          const result = await nodeRequest.query(
-          `SELECT s.*, '${nodeKey}' AS node
-           FROM [session] s
-           WHERE s.ID_class IN (${clause})`
-        );
-          return { nodeKey, rows: result.recordset };
-        } catch (error) {
-          const nodeError = withNode(nodeKey, error);
-          if (isOfflineError(nodeError)) {
-            return { nodeKey, offline: true };
-          }
-          throw nodeError;
-        }
-      })
-    );
-
-    const rows = [];
-    const offlineNodes = [];
-    perNodeResults.forEach(result => {
-      if (result.offline) {
-        offlineNodes.push(result.nodeKey);
-      } else if (result.rows?.length) {
-        rows.push(...result.rows);
-      }
-    });
 
     return res.json({
       success: true,
-      data: rows,
+      data: result.recordset,
       meta: {
-        offlineNodes
+        offlineNodes: []
       }
     });
   } catch (error) {

@@ -1,19 +1,13 @@
 import express from 'express';
 import sql from 'mssql';
 import { getPool } from '../config/db.js';
-import { isValidNode, normalizeNodeKey } from '../config/nodes.js';
+import { isValidNode, normalizeNodeKey, getHeadquarterId } from '../config/nodes.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 
 const router = express.Router();
 
 const ID_TYPE = sql.NVarChar(50);
-
-function createHttpError(status, message) {
-  const error = new Error(message);
-  error.status = status;
-  return error;
-}
 
 function sendError(res, error) {
   if (isOfflineError(error)) {
@@ -50,93 +44,45 @@ async function runOnNode(nodeKey, task) {
   }
 }
 
-async function ensureStudentExists(transaction, nodeKey, maSV) {
-  const request = createRequest(nodeKey, transaction);
-  request.input('maSV', ID_TYPE, maSV);
-  const result = await request.query(`SELECT 1 AS ok FROM student WHERE ID_student = @maSV`);
-  if (result.recordset.length === 0) {
-    throw createHttpError(404, 'Không tìm thấy sinh viên.');
-  }
-}
-
-async function ensureClassAvailable(transaction, nodeKey, maLop) {
-  const request = createRequest(nodeKey, transaction);
-  request.input('maLop', ID_TYPE, maLop);
-  const result = await request.query(
-    `SELECT max_students AS siSoToiDa,
-            number_of_registration AS siSoDaDK,
-            class_status AS trangThai
-     FROM [class]
-     WHERE ID_class = @maLop`
-  );
-  if (result.recordset.length === 0) {
-    throw createHttpError(404, 'Không tìm thấy lớp học phần.');
-  }
-  const { siSoToiDa, siSoDaDK, trangThai } = result.recordset[0];
-  if (trangThai && trangThai !== 'OPEN') {
-    throw createHttpError(400, 'Lớp học phần đang đóng.');
-  }
-  if (siSoDaDK >= siSoToiDa) {
-    throw createHttpError(400, 'Lớp học phần đã đủ sĩ số.');
-  }
-}
-
-async function ensureNotRegistered(transaction, nodeKey, maSV, maLop) {
-  const request = createRequest(nodeKey, transaction);
-  request.input('maSV', ID_TYPE, maSV);
-  request.input('maLop', ID_TYPE, maLop);
-  const result = await request.query(
-    `SELECT 1 AS daDangKy
-     FROM registration
-     WHERE ID_student = @maSV
-       AND ID_class = @maLop
-       AND cancelled_at IS NULL
-       AND registration_status = 'REGISTERED'`
-  );
-  if (result.recordset.length > 0) {
-    throw createHttpError(400, 'Sinh viên đã đăng ký lớp học phần này.');
-  }
-}
-
-async function insertRegistration(transaction, nodeKey, maSV, maLop) {
-  const request = createRequest(nodeKey, transaction);
-  request.input('maSV', ID_TYPE, maSV);
-  request.input('maLop', ID_TYPE, maLop);
-  
-  // Get next REG ID (only from IDs starting with 'REG')
+// Generate next registration ID
+async function generateRegId(pool, nodeKey) {
+  const request = createRequest(nodeKey, null, pool);
   const result = await request.query(
     `SELECT ISNULL(MAX(CAST(SUBSTRING(ID_registration, 4, 10) AS INT)), 0) + 1 AS nextNum 
      FROM registration
-     WHERE ID_registration LIKE 'REG[0-9]%'`
+     WHERE ID_registration LIKE 'REG%'`
   );
   const nextNum = result.recordset[0]?.nextNum || 1;
-  const regId = 'REG' + String(nextNum).padStart(3, '0');
-  
-  request.input('regId', ID_TYPE, regId);
-  await request.query(
-    `INSERT INTO registration (ID_registration, ID_student, ID_class, registered_at, registration_status)
-     VALUES (@regId, @maSV, @maLop, GETDATE(), 'REGISTERED')`
-  );
+  return 'REG' + String(nextNum).padStart(6, '0');
 }
 
-async function incrementClassEnrolled(transaction, nodeKey, maLop) {
-  const request = createRequest(nodeKey, transaction);
-  request.input('maLop', ID_TYPE, maLop);
-  await request.query(
-    `UPDATE [class]
-     SET number_of_registration = number_of_registration + 1
-     WHERE ID_class = @maLop`
-  );
-}
-
-async function deleteRegistration(nodeKey, maSV, maLop) {
+async function fetchStudentHeadquarterId(nodeKey, studentId) {
   const pool = await safeGetPool(nodeKey);
   const request = createRequest(nodeKey, null, pool);
-  request.input('maSV', ID_TYPE, maSV);
-  request.input('maLop', ID_TYPE, maLop);
-  await request.query(
-    `DELETE FROM registration WHERE ID_student = @maSV AND ID_class = @maLop`
+  request.input('studentId', ID_TYPE, studentId);
+  const result = await request.query(
+    `SELECT h.ID_headquarter AS headquarterId
+     FROM student s
+     JOIN department d ON d.ID_department = s.ID_department
+     JOIN headquarter h ON h.ID_headquarter = d.ID_headquarter
+     WHERE s.ID_student = @studentId`
   );
+  return result.recordset[0]?.headquarterId ?? null;
+}
+
+async function fetchClassHeadquarterId(nodeKey, classId) {
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  request.input('classId', ID_TYPE, classId);
+  const result = await request.query(
+    `SELECT h.ID_headquarter AS headquarterId
+     FROM class c
+     JOIN teacher t ON t.ID_teacher = c.ID_teacher
+     JOIN department d ON d.ID_department = t.ID_department
+     JOIN headquarter h ON h.ID_headquarter = d.ID_headquarter
+     WHERE c.ID_class = @classId`
+  );
+  return result.recordset[0]?.headquarterId ?? null;
 }
 
 router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
@@ -144,6 +90,13 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const maSV = req.user?.id;
   const maCS = normalizeNodeKey(req.user?.maCS);
   const maCSLopNormalized = normalizeNodeKey(maCSLop);
+
+  const headquarterStudent = (await fetchStudentHeadquarterId(maCS, maSV))
+    ?? getHeadquarterId(maCS)
+    ?? maCS;
+  const headquarterClass = (await fetchClassHeadquarterId(maCSLopNormalized, maLop))
+    ?? getHeadquarterId(maCSLopNormalized)
+    ?? maCSLopNormalized;
 
   if (!maSV || !maCS) {
     return res.status(400).json({
@@ -166,64 +119,135 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
     });
   }
 
+  // Same campus registration
   if (maCS === maCSLopNormalized) {
-    let transaction;
     try {
       const pool = await safeGetPool(maCS);
-      transaction = new sql.Transaction(pool);
-      await transaction.begin();
-      await runOnNode(maCS, () => ensureStudentExists(transaction, maCS, maSV));
-      await runOnNode(maCS, () => ensureClassAvailable(transaction, maCS, maLop));
-      await runOnNode(maCS, () => ensureNotRegistered(transaction, maCS, maSV, maLop));
-      await runOnNode(maCS, () => insertRegistration(transaction, maCS, maSV, maLop));
-      await runOnNode(maCS, () => incrementClassEnrolled(transaction, maCS, maLop));
-      await transaction.commit();
+
+      // 1. Check conditions using stored procedure
+      const checkRequest = createRequest(maCS, null, pool);
+      checkRequest.input('ID_student', ID_TYPE, maSV);
+      checkRequest.input('ID_class', ID_TYPE, maLop);
+      checkRequest.input('ID_headquarter', ID_TYPE, headquarterStudent);
+
+      const checkResult = await checkRequest.execute('usp_CheckRegisterCondition');
+      const isValid = checkResult.recordset[0]?.is_valid;
+      const message = checkResult.recordset[0]?.message;
+
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: message || 'Không thể đăng ký lớp này.'
+        });
+      }
+
+      // 2. Generate registration ID
+      const regId = await generateRegId(pool, maCS);
+
+      // 3. Register using stored procedure
+      const regRequest = createRequest(maCS, null, pool);
+      regRequest.input('ID_registration', ID_TYPE, regId);
+      regRequest.input('ID_student', ID_TYPE, maSV);
+      regRequest.input('ID_class', ID_TYPE, maLop);
+      regRequest.input('ID_headquarter', ID_TYPE, headquarterStudent);
+
+      await regRequest.execute('usp_RegisterClass');
+
       return res.json({
         success: true,
         data: {
+          maDangKy: regId,
           maSV,
           maLop,
           maCS
         }
       });
     } catch (error) {
-      if (transaction) {
-        await transaction.rollback().catch(() => undefined);
-      }
       return sendError(res, error);
     }
   }
 
+  // Cross-campus registration (2PC pattern)
   let transactionStudent;
   let transactionClass;
   try {
     const poolStudent = await safeGetPool(maCS);
     const poolClass = await safeGetPool(maCSLopNormalized);
 
+    // 1. Check conditions on both nodes
+    const checkStudentReq = createRequest(maCS, null, poolStudent);
+    checkStudentReq.input('ID_student', ID_TYPE, maSV);
+    checkStudentReq.input('ID_class', ID_TYPE, maLop);
+    checkStudentReq.input('ID_headquarter', ID_TYPE, headquarterStudent);
+    const checkStudentResult = await checkStudentReq.execute('usp_CheckRegisterCondition');
+
+    const checkClassReq = createRequest(maCSLopNormalized, null, poolClass);
+    checkClassReq.input('ID_student', ID_TYPE, maSV);
+    checkClassReq.input('ID_class', ID_TYPE, maLop);
+    checkClassReq.input('ID_headquarter', ID_TYPE, headquarterClass);
+    const checkClassResult = await checkClassReq.execute('usp_CheckRegisterCondition');
+
+    if (!checkStudentResult.recordset[0]?.is_valid) {
+      return res.status(400).json({
+        success: false,
+        message: checkStudentResult.recordset[0]?.message || 'Không thể đăng ký lớp này.'
+      });
+    }
+
+    if (!checkClassResult.recordset[0]?.is_valid) {
+      return res.status(400).json({
+        success: false,
+        message: checkClassResult.recordset[0]?.message || 'Không thể đăng ký lớp này.'
+      });
+    }
+
+    // 2. Generate registration ID (on student's node)
+    const regId = await generateRegId(poolStudent, maCS);
+
+    // 3. Begin transactions
     transactionStudent = new sql.Transaction(poolStudent);
     transactionClass = new sql.Transaction(poolClass);
 
     await transactionStudent.begin();
     await transactionClass.begin();
 
-    await runOnNode(maCS, () => ensureStudentExists(transactionStudent, maCS, maSV));
-    await runOnNode(maCS, () => ensureNotRegistered(transactionStudent, maCS, maSV, maLop));
-    await runOnNode(maCSLopNormalized, () => ensureClassAvailable(transactionClass, maCSLopNormalized, maLop));
+    // 4. Register on student's node
+    const regStudentReq = createRequest(maCS, transactionStudent);
+    regStudentReq.input('ID_registration', ID_TYPE, regId);
+    regStudentReq.input('ID_student', ID_TYPE, maSV);
+    regStudentReq.input('ID_class', ID_TYPE, maLop);
+    regStudentReq.input('ID_headquarter', ID_TYPE, headquarterStudent);
+    await regStudentReq.execute('usp_RegisterClass');
 
-    await runOnNode(maCS, () => insertRegistration(transactionStudent, maCS, maSV, maLop));
-    await runOnNode(maCSLopNormalized, () => incrementClassEnrolled(transactionClass, maCSLopNormalized, maLop));
+    // 5. Increment on class's node
+    const updateClassReq = createRequest(maCSLopNormalized, transactionClass);
+    updateClassReq.input('ID_class', ID_TYPE, maLop);
+    await updateClassReq.query(
+      `UPDATE [class]
+       SET number_of_registration = number_of_registration + 1
+       WHERE ID_class = @ID_class`
+    );
 
     await transactionStudent.commit();
     try {
       await transactionClass.commit();
     } catch (error) {
-      await runOnNode(maCS, () => deleteRegistration(maCS, maSV, maLop)).catch(() => undefined);
+      // Rollback student transaction if class update fails
+      await runOnNode(maCS, async () => {
+        const pool = await safeGetPool(maCS);
+        const deleteReq = createRequest(maCS, null, pool);
+        deleteReq.input('ID_registration', ID_TYPE, regId);
+        await deleteReq.query(
+          `DELETE FROM registration WHERE ID_registration = @ID_registration`
+        );
+      }).catch(() => undefined);
       throw error;
     }
 
     return res.json({
       success: true,
       data: {
+        maDangKy: regId,
         maSV,
         maLop,
         maCS,
@@ -246,6 +270,10 @@ router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res)
   const maSV = req.user?.id;
   const maCS = normalizeNodeKey(req.user?.maCS);
 
+  const headquarterId = (await fetchStudentHeadquarterId(maCS, maSV))
+    ?? getHeadquarterId(maCS)
+    ?? maCS;
+
   if (!maSV || !maCS) {
     return res.status(400).json({
       success: false,
@@ -260,45 +288,45 @@ router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res)
     });
   }
 
-  let transaction;
   try {
     const pool = await safeGetPool(maCS);
-    transaction = new sql.Transaction(pool);
-    await transaction.begin();
 
-    const request = createRequest(maCS, transaction);
-    request.input('maDangKy', ID_TYPE, maDangKy);
-    request.input('maSV', ID_TYPE, maSV);
-
-    const regCheck = await request.query(
-      `SELECT ID_class FROM registration WHERE ID_registration = @maDangKy AND ID_student = @maSV`
+    // 1. Verify registration belongs to student
+    const verifyReq = createRequest(maCS, null, pool);
+    verifyReq.input('ID_registration', ID_TYPE, maDangKy);
+    verifyReq.input('ID_student', ID_TYPE, maSV);
+    const verifyResult = await verifyReq.query(
+      `SELECT ID_class, registration_status FROM registration 
+       WHERE ID_registration = @ID_registration AND ID_student = @ID_student`
     );
 
-    if (regCheck.recordset.length === 0) {
-      throw createHttpError(404, 'Không tìm thấy đăng ký.');
+    if (verifyResult.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy đăng ký.'
+      });
     }
 
-    const maLop = regCheck.recordset[0].ID_class;
+    const regStatus = verifyResult.recordset[0].registration_status;
+    if (regStatus === 'CANCELLED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Đăng ký này đã bị hủy rồi.'
+      });
+    }
 
-    await request.query(
-      `UPDATE registration SET cancelled_at = GETDATE(), registration_status = 'CANCELLED' WHERE ID_registration = @maDangKy`
-    );
+    // 2. Cancel registration using stored procedure
+    const cancelReq = createRequest(maCS, null, pool);
+    cancelReq.input('ID_registration', ID_TYPE, maDangKy);
+    cancelReq.input('ID_headquarter', ID_TYPE, headquarterId);
 
-    request.input('maLop', ID_TYPE, maLop);
-    await request.query(
-      `UPDATE [class] SET number_of_registration = number_of_registration - 1 WHERE ID_class = @maLop`
-    );
-
-    await transaction.commit();
+    await cancelReq.execute('usp_CancelRegistration');
 
     return res.json({
       success: true,
       message: 'Hủy đăng ký thành công.'
     });
   } catch (error) {
-    if (transaction) {
-      await transaction.rollback().catch(() => undefined);
-    }
     return sendError(res, error);
   }
 });
