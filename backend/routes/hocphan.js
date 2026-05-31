@@ -66,133 +66,133 @@ router.get('/classes', authenticate, requireRole(['sinhvien']), async (req, res)
 });
 
 router.get('/available', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const maCS = normalizeNodeKey(req.query.maCS) || normalizeNodeKey(req.user?.maCS);
+   const maCS = normalizeNodeKey(req.query.maCS) || normalizeNodeKey(req.user?.maCS);
 
-  if (!maCS) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu thông tin cơ sở.'
-    });
-  }
+   if (!maCS) {
+     return res.status(400).json({
+       success: false,
+       message: 'Thiếu thông tin cơ sở.'
+     });
+   }
 
-  try {
-    const pool = await safeGetPool(maCS);
-    const request = createRequest(maCS, null, pool);
-    const result = await request.query(
-      `SELECT 
-         c.ID_class AS maMH,
-         s.name_subject AS tenMonHoc,
-         s.number_of_credit AS soTC,
-         c.group_number AS nhom,
-         t.name_teacher AS giangVien,
-         c.max_students AS siSoToiDa,
-         c.number_of_registration AS siSoDaDangKy,
-         (c.max_students - c.number_of_registration) AS conLai,
-         c.class_status AS trangThai,
-         tm.name_term AS hocKy
-       FROM [class] c
-       JOIN subject s ON s.ID_subject = c.ID_subject
-       JOIN teacher t ON t.ID_teacher = c.ID_teacher
-       JOIN term tm ON tm.ID_term = c.ID_term
-       WHERE c.class_status = 'OPEN'
-         AND c.max_students > c.number_of_registration
-       ORDER BY c.ID_class`
-    );
+   try {
+     const pool = await safeGetPool(maCS);
+     const request = createRequest(maCS, null, pool);
+     const result = await request.query(
+       `SELECT 
+          c.ID_class AS maMH,
+          s.name_subject AS tenMonHoc,
+          s.number_of_credit AS soTC,
+          c.group_number AS nhom,
+          t.name_teacher AS giangVien,
+          c.max_students AS siSoToiDa,
+          c.number_of_registration AS siSoDaDangKy,
+          (c.max_students - c.number_of_registration) AS conLai,
+          c.class_status AS trangThai,
+          tm.name_term AS hocKy
+        FROM [class] c
+        JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
+        JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+        JOIN term tm ON tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
+        WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
+          AND c.max_students > c.number_of_registration
+        ORDER BY c.ID_class`
+     );
 
-    return res.json({
-      success: true,
-      data: result.recordset
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
+     return res.json({
+       success: true,
+       data: result.recordset
+     });
+   } catch (error) {
+     return sendError(res, error);
+   }
 });
 
 router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const maCS = normalizeNodeKey(req.user?.maCS);
-  const { classId } = req.params;
+   const maCS = normalizeNodeKey(req.user?.maCS);
+   const { classId } = req.params;
 
-  if (!maCS || !classId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu thông tin.'
-    });
-  }
+   if (!maCS || !classId) {
+     return res.status(400).json({
+       success: false,
+       message: 'Thiếu thông tin.'
+     });
+   }
 
-  try {
-    const pool = await safeGetPool(maCS);
-    const request = createRequest(maCS, null, pool);
-    request.input('classId', ID_TYPE, classId);
-    const result = await request.query(
-      `SELECT 
-         s.ID_session AS ID_session,
-         s.study_date AS ngayHoc,
-         s.day_of_week AS thuHoc,
-         s.note AS ghiChu,
-         ts.shift_no AS caHoc,
-         ts.start_time AS gioStart,
-         ts.end_time AS gioEnd,
-         r.name_room AS phongHoc
-       FROM [session] s
-       JOIN timeslot ts ON ts.ID_timeslot = s.ID_timeslot
-       JOIN room r ON r.ID_room = s.ID_room
-       WHERE s.ID_class = @classId
-       ORDER BY s.study_date, ts.shift_no`
-    );
+   try {
+     const pool = await safeGetPool(maCS);
+     const request = createRequest(maCS, null, pool);
+     request.input('classId', ID_TYPE, classId);
+     const result = await request.query(
+       `SELECT 
+          s.ID_session AS ID_session,
+          s.study_date AS ngayHoc,
+          s.day_of_week AS thuHoc,
+          s.note AS ghiChu,
+          ts.shift_no AS caHoc,
+          ts.start_time AS gioStart,
+          ts.end_time AS gioEnd,
+          r.name_room AS phongHoc
+        FROM [session] s
+        JOIN timeslot ts ON ts.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS
+        JOIN room r ON r.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS
+        WHERE s.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @classId COLLATE SQL_Latin1_General_CP1_CI_AS
+        ORDER BY s.study_date, ts.shift_no`
+     );
 
-    return res.json({
-      success: true,
-      data: result.recordset
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
+     return res.json({
+       success: true,
+       data: result.recordset
+     });
+   } catch (error) {
+     return sendError(res, error);
+   }
 });
 
 router.get('/available-all', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  try {
-    const { getNodes } = await import('../config/nodes.js');
-    const nodes = getNodes();
-    const allClasses = {};
+   try {
+     const { getNodes } = await import('../config/nodes.js');
+     const nodes = getNodes();
+     const allClasses = {};
 
-    for (const [nodeKey, nodeInfo] of Object.entries(nodes)) {
-      try {
-        const pool = await safeGetPool(nodeKey);
-        const request = createRequest(nodeKey, null, pool);
-        const result = await request.query(
-          `SELECT 
-              c.ID_class AS maMH,
-              s.name_subject AS tenMonHoc,
-              s.number_of_credit AS soTC,
-              c.group_number AS nhom,
-              t.name_teacher AS giangVien,
-              c.max_students AS siSoToiDa,
-              c.number_of_registration AS siSoDaDangKy,
-              (c.max_students - c.number_of_registration) AS conLai,
-              c.class_status AS trangThai,
-              tm.name_term AS hocKy
-            FROM [class] c
-            JOIN subject s ON s.ID_subject = c.ID_subject
-            JOIN teacher t ON t.ID_teacher = c.ID_teacher
-            JOIN term tm ON tm.ID_term = c.ID_term
-            WHERE c.class_status = 'OPEN'
-              AND c.max_students > c.number_of_registration
-            ORDER BY c.ID_class`
-        );
-        allClasses[nodeKey] = result.recordset;
-      } catch (err) {
-        console.log(`[DB] Failed to fetch from ${nodeKey}:`, err.message);
-        allClasses[nodeKey] = [];
-      }
-    }
+     for (const [nodeKey, nodeInfo] of Object.entries(nodes)) {
+       try {
+         const pool = await safeGetPool(nodeKey);
+         const request = createRequest(nodeKey, null, pool);
+         const result = await request.query(
+           `SELECT 
+               c.ID_class AS maMH,
+               s.name_subject AS tenMonHoc,
+               s.number_of_credit AS soTC,
+               c.group_number AS nhom,
+               t.name_teacher AS giangVien,
+               c.max_students AS siSoToiDa,
+               c.number_of_registration AS siSoDaDangKy,
+               (c.max_students - c.number_of_registration) AS conLai,
+               c.class_status AS trangThai,
+               tm.name_term AS hocKy
+             FROM [class] c
+             JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
+             JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+             JOIN term tm ON tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
+             WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
+               AND c.max_students > c.number_of_registration
+             ORDER BY c.ID_class`
+         );
+         allClasses[nodeKey] = result.recordset;
+       } catch (err) {
+         console.log(`[DB] Failed to fetch from ${nodeKey}:`, err.message);
+         allClasses[nodeKey] = [];
+       }
+     }
 
-    return res.json({
-      success: true,
-      data: allClasses
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
+     return res.json({
+       success: true,
+       data: allClasses
+     });
+   } catch (error) {
+     return sendError(res, error);
+   }
 });
 
 export default router;

@@ -46,41 +46,41 @@ async function runOnNode(nodeKey, task) {
 
 // Generate next registration ID
 async function generateRegId(pool, nodeKey) {
-  const request = createRequest(nodeKey, null, pool);
-  const result = await request.query(
-    `SELECT ISNULL(MAX(CAST(SUBSTRING(ID_registration, 4, 10) AS INT)), 0) + 1 AS nextNum 
-     FROM registration
-     WHERE ID_registration LIKE 'REG%'`
-  );
-  const nextNum = result.recordset[0]?.nextNum || 1;
-  return 'REG' + String(nextNum).padStart(6, '0');
-}
+   const request = createRequest(nodeKey, null, pool);
+   const result = await request.query(
+     `SELECT ISNULL(MAX(CAST(SUBSTRING(ID_registration, 4, 10) AS INT)), 0) + 1 AS nextNum 
+      FROM registration
+      WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS LIKE 'REG%'`
+   );
+   const nextNum = result.recordset[0]?.nextNum || 1;
+   return 'REG' + String(nextNum).padStart(6, '0');
+ }
 
 async function fetchStudentHeadquarterId(nodeKey, studentId) {
-  const pool = await safeGetPool(nodeKey);
-  const request = createRequest(nodeKey, null, pool);
-  request.input('studentId', ID_TYPE, studentId);
-  const result = await request.query(
-    `SELECT h.ID_headquarter AS headquarterId
-     FROM student s
-     JOIN department d ON d.ID_department = s.ID_department
-     JOIN headquarter h ON h.ID_headquarter = d.ID_headquarter
-     WHERE s.ID_student = @studentId`
-  );
-  return result.recordset[0]?.headquarterId ?? null;
-}
+   const pool = await safeGetPool(nodeKey);
+   const request = createRequest(nodeKey, null, pool);
+   request.input('studentId', ID_TYPE, studentId);
+   const result = await request.query(
+     `SELECT h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS AS headquarterId
+      FROM student s
+      JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+      JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+      WHERE s.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @studentId COLLATE SQL_Latin1_General_CP1_CI_AS`
+   );
+   return result.recordset[0]?.headquarterId ?? null;
+ }
 
 async function fetchClassHeadquarterId(nodeKey, classId) {
   const pool = await safeGetPool(nodeKey);
   const request = createRequest(nodeKey, null, pool);
   request.input('classId', ID_TYPE, classId);
   const result = await request.query(
-    `SELECT h.ID_headquarter AS headquarterId
+    `SELECT h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS AS headquarterId
      FROM class c
-     JOIN teacher t ON t.ID_teacher = c.ID_teacher
-     JOIN department d ON d.ID_department = t.ID_department
-     JOIN headquarter h ON h.ID_headquarter = d.ID_headquarter
-     WHERE c.ID_class = @classId`
+     JOIN teacher t ON t.ID_teacher = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN department d ON d.ID_department = t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN headquarter h ON h.ID_headquarter = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+     WHERE c.ID_class = @classId COLLATE SQL_Latin1_General_CP1_CI_AS`
   );
   return result.recordset[0]?.headquarterId ?? null;
 }
@@ -219,14 +219,14 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
     regStudentReq.input('ID_headquarter', ID_TYPE, headquarterStudent);
     await regStudentReq.execute('usp_RegisterClass');
 
-    // 5. Increment on class's node
-    const updateClassReq = createRequest(maCSLopNormalized, transactionClass);
-    updateClassReq.input('ID_class', ID_TYPE, maLop);
-    await updateClassReq.query(
-      `UPDATE [class]
-       SET number_of_registration = number_of_registration + 1
-       WHERE ID_class = @ID_class`
-    );
+     // 5. Increment on class's node
+     const updateClassReq = createRequest(maCSLopNormalized, transactionClass);
+     updateClassReq.input('ID_class', ID_TYPE, maLop);
+     await updateClassReq.query(
+       `UPDATE [class]
+        SET number_of_registration = number_of_registration + 1
+        WHERE ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_class COLLATE SQL_Latin1_General_CP1_CI_AS`
+     );
 
     await transactionStudent.commit();
     try {
@@ -235,11 +235,11 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
       // Rollback student transaction if class update fails
       await runOnNode(maCS, async () => {
         const pool = await safeGetPool(maCS);
-        const deleteReq = createRequest(maCS, null, pool);
-        deleteReq.input('ID_registration', ID_TYPE, regId);
-        await deleteReq.query(
-          `DELETE FROM registration WHERE ID_registration = @ID_registration`
-        );
+       const deleteReq = createRequest(maCS, null, pool);
+         deleteReq.input('ID_registration', ID_TYPE, regId);
+         await deleteReq.query(
+           `DELETE FROM registration WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS`
+         );
       }).catch(() => undefined);
       throw error;
     }
@@ -291,14 +291,15 @@ router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res)
   try {
     const pool = await safeGetPool(maCS);
 
-    // 1. Verify registration belongs to student
-    const verifyReq = createRequest(maCS, null, pool);
-    verifyReq.input('ID_registration', ID_TYPE, maDangKy);
-    verifyReq.input('ID_student', ID_TYPE, maSV);
-    const verifyResult = await verifyReq.query(
-      `SELECT ID_class, registration_status FROM registration 
-       WHERE ID_registration = @ID_registration AND ID_student = @ID_student`
-    );
+     // 1. Verify registration belongs to student
+     const verifyReq = createRequest(maCS, null, pool);
+     verifyReq.input('ID_registration', ID_TYPE, maDangKy);
+     verifyReq.input('ID_student', ID_TYPE, maSV);
+     const verifyResult = await verifyReq.query(
+       `SELECT ID_class, registration_status FROM registration 
+        WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS 
+          AND ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
+     );
 
     if (verifyResult.recordset.length === 0) {
       return res.status(404).json({

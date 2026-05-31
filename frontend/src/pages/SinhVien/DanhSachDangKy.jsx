@@ -56,7 +56,6 @@ export default function DanhSachDangKy({ apiBase, token }) {
   const [registered, setRegistered] = useState([]);
   const [loading, setLoading] = useState(false);
   const [schedules, setSchedules] = useState({});
-  const [expandedClass, setExpandedClass] = useState(null);
   const [error, setError] = useState('');
   const [cancelling, setCancelling] = useState(null);
   const [registering, setRegistering] = useState(null);
@@ -82,6 +81,7 @@ export default function DanhSachDangKy({ apiBase, token }) {
     const maCS = nodeKey || selectedNode;
     setLoading(true);
     setError('');
+    setSchedules({});
     try {
       const [availRes, regRes] = await Promise.all([
         fetch(`${apiBase}/api/hocphan/available?maCS=${maCS}`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -95,7 +95,24 @@ export default function DanhSachDangKy({ apiBase, token }) {
         setError(availData.message || 'Không thể tải danh sách môn học.');
         setAvailable([]);
       } else {
-        setAvailable(availData.data || []);
+        const availableClasses = availData.data || [];
+        setAvailable(availableClasses);
+        if (availableClasses.length > 0) {
+          const scheduleEntries = await Promise.all(
+            availableClasses.map(async (cls) => {
+              try {
+                const scheduleRes = await fetch(`${apiBase}/api/hocphan/schedule/${cls.maMH}?maCS=${maCS}`, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+                const scheduleData = await scheduleRes.json();
+                return [cls.maMH, scheduleData.success ? scheduleData.data : []];
+              } catch {
+                return [cls.maMH, []];
+              }
+            })
+          );
+          setSchedules(Object.fromEntries(scheduleEntries));
+        }
       }
 
       if (!regData.success) {
@@ -124,28 +141,26 @@ export default function DanhSachDangKy({ apiBase, token }) {
     }
   };
 
-  const fetchSchedule = async (classId) => {
-    if (schedules[classId]) {
-      setExpandedClass(expandedClass === classId ? null : classId);
-      return;
+  const renderScheduleCell = (classId) => {
+    const classSchedule = schedules[classId];
+
+    if (classSchedule === undefined) {
+      return <span style={{ color: '#999' }}>Đang tải...</span>;
     }
 
-    try {
-      const res = await fetch(`${apiBase}/api/hocphan/schedule/${classId}?maCS=${selectedNode}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      setSchedules(prev => ({
-        ...prev,
-        [classId]: data.success ? data.data : []
-      }));
-      setExpandedClass(classId);
-    } catch (err) {
-      setSchedules(prev => ({
-        ...prev,
-        [classId]: []
-      }));
+    if (classSchedule.length === 0) {
+      return <span style={{ color: '#999' }}>-</span>;
     }
+
+    return (
+      <div style={{ display: 'grid', gap: '4px', fontSize: '0.85rem', textAlign: 'left', lineHeight: '1.3', whiteSpace: 'normal', wordWrap: 'break-word' }}>
+        {classSchedule.map((sess, i) => (
+          <div key={i}>
+            {`Thứ ${sess.thuHoc}, ${formatDate(sess.ngayHoc)}, ${formatTime(sess.gioStart)} - ${formatTime(sess.gioEnd)}, phòng ${sess.phongHoc}`}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   const handleCancel = async (maDangKy) => {
@@ -249,7 +264,7 @@ export default function DanhSachDangKy({ apiBase, token }) {
                 <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Số TC</th>
                 <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Số Lượng</th>
                 <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Còn Lại</th>
-                <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Thời Khóa Biểu</th>
+                <th style={{ padding: '8px', textAlign: 'left', fontWeight: 'bold' }}>Thời Khóa Biểu</th>
                 <th style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>Đăng Ký</th>
               </tr>
             </thead>
@@ -265,20 +280,8 @@ export default function DanhSachDangKy({ apiBase, token }) {
                   <td style={{ padding: '8px', textAlign: 'center', color: cls.conLai <= 3 ? '#d32f2f' : '#388e3c' }}>
                     <strong>{cls.conLai}</strong>
                   </td>
-                  <td style={{ padding: '8px', textAlign: 'center' }}>
-                    <button
-                      onClick={() => fetchSchedule(cls.maMH)}
-                      style={{
-                        padding: '4px 8px',
-                        backgroundColor: expandedClass === cls.maMH ? '#1976d2' : '#f5f5f5',
-                        color: expandedClass === cls.maMH ? 'white' : '#333',
-                        border: '1px solid #ddd',
-                        borderRadius: '4px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {expandedClass === cls.maMH ? '▼' : '▶'}
-                    </button>
+                  <td style={{ padding: '8px', minWidth: '280px', maxWidth: '300px', verticalAlign: 'top' }}>
+                    {renderScheduleCell(cls.maMH)}
                   </td>
                   <td style={{ padding: '8px', textAlign: 'center' }}>
                     <button
@@ -303,41 +306,6 @@ export default function DanhSachDangKy({ apiBase, token }) {
           </table>
         )}
 
-        {expandedClass && schedules[expandedClass] && (
-          <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-            <h4>Lịch Học - {expandedClass}</h4>
-            {schedules[expandedClass].length === 0 ? (
-              <p>Không có lịch học.</p>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#e0e0e0' }}>
-                    <th style={{ padding: '6px', textAlign: 'left' }}>Ngày Học</th>
-                    <th style={{ padding: '6px', textAlign: 'left' }}>Thứ</th>
-                    <th style={{ padding: '6px', textAlign: 'left' }}>Ca Học</th>
-                    <th style={{ padding: '6px', textAlign: 'left' }}>Giờ</th>
-                    <th style={{ padding: '6px', textAlign: 'left' }}>Phòng Học</th>
-                    <th style={{ padding: '6px', textAlign: 'left' }}>Ghi Chú</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {schedules[expandedClass].map((sess, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #ddd' }}>
-                      <td style={{ padding: '6px' }}>{formatDate(sess.ngayHoc)}</td>
-                      <td style={{ padding: '6px' }}>Thứ {sess.thuHoc}</td>
-                      <td style={{ padding: '6px' }}>Ca {sess.caHoc}</td>
-                      <td style={{ padding: '6px' }}>{formatTime(sess.gioStart) } - {formatTime(sess.gioEnd)}</td>
-                      <td style={{ padding: '6px' }}>{sess.phongHoc}</td>
-                      <td style={{ padding: '6px', fontSize: '0.85rem', color: '#666', fontStyle: 'italic' }}>
-                        {sess.ghiChu || '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
       </div>
 
        <div>
