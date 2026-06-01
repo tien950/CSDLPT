@@ -15,12 +15,31 @@ export function getToken() {
   return localStorage.getItem('token');
 }
 
+function normalizeJsonBody(options) {
+  if (
+    options.body &&
+    typeof options.body === 'object' &&
+    !(options.body instanceof FormData) &&
+    !(options.body instanceof URLSearchParams) &&
+    !(options.body instanceof Blob)
+  ) {
+    return {
+      ...options,
+      body: JSON.stringify(options.body),
+    };
+  }
+
+  return options;
+}
+
 export async function authFetch(path, options = {}) {
+  const requestOptions = normalizeJsonBody(options);
+
   const res = await fetch(`${API_LOCAL}${path}`, {
-    ...options,
+    ...requestOptions,
     headers: {
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
+      ...(requestOptions.headers || {}),
     },
   });
 
@@ -41,12 +60,13 @@ export async function apiFetch(path, maCS, options = {}) {
   }
 
   const apiBase = getApiBase(maCS);
+  const requestOptions = normalizeJsonBody(options);
 
   const res = await fetch(`${apiBase}${path}`, {
-    ...options,
+    ...requestOptions,
     headers: {
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
+      ...(requestOptions.headers || {}),
       Authorization: `Bearer ${token}`,
     },
   });
