@@ -48,9 +48,15 @@ app.get('/api/health', async (req, res) => {
       const pool = await getPool(key);
       // quick lightweight query
       await pool.request().query('SELECT 1 AS ok');
-      statuses[key] = { ok: true };
+      statuses[key] = { ok: true, timestamp: new Date().toISOString() };
     } catch (err) {
-      statuses[key] = { ok: false, message: err.message };
+      statuses[key] = {
+        ok: false,
+        message: err.message,
+        code: err.code,
+        timestamp: new Date().toISOString()
+      };
+      console.error(`[HEALTH] Node ${key} failed:`, err.code, err.message);
     }
   }));
   res.json({ success: true, nodes: statuses });

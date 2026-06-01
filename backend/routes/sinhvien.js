@@ -5,9 +5,12 @@ import { getPool } from '../config/db.js';
 import { normalizeNodeKey, getHeadquarterId, isValidNode } from '../config/nodes.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 import { deleteRow, insertRow, queryRows, updateRow } from '../utils/tableCrud.js';
+import { getCachedResult, setCachedResult } from '../utils/queryCache.js';
 
 const router = express.Router();
 const ID_TYPE = sql.NVarChar(50);
+
+// ...existing code...
 
 function sendError(res, error) {
   if (isOfflineError(error)) {
@@ -116,85 +119,112 @@ router.delete('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), as
 });
 
 router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const maSV = req.user?.id;
-  const maCS = normalizeNodeKey(req.user?.maCS);
-  const headquarterId = getHeadquarterId(maCS) ?? maCS;
+   const maSV = req.user?.id;
+   const maCS = normalizeNodeKey(req.user?.maCS);
+   const headquarterId = getHeadquarterId(maCS) ?? maCS;
 
-  if (!maSV || !maCS) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu thông tin sinh viên trong token.'
-    });
-  }
+   if (!maSV || !maCS) {
+     return res.status(400).json({
+       success: false,
+       message: 'Thiếu thông tin sinh viên trong token.'
+     });
+   }
 
-  try {
-    const pool = await safeGetPool(maCS);
-    const resolvedHeadquarter = (await fetchStudentHeadquarterId(maCS, maSV))
-      ?? getHeadquarterId(maCS)
-      ?? maCS;
+   try {
+     // Check cache first
+     const cached = getCachedResult(maSV, maCS, 'registrations');
+     if (cached) {
+       return res.json({
+         success: true,
+         data: cached,
+         cached: true
+       });
+     }
 
-    const request = createRequest(maCS, null, pool);
-    request.input('ID_student', ID_TYPE, maSV);
-    request.input('ID_headquarter', ID_TYPE, resolvedHeadquarter);
+     const pool = await safeGetPool(maCS);
+     const resolvedHeadquarter = (await fetchStudentHeadquarterId(maCS, maSV))
+       ?? getHeadquarterId(maCS)
+       ?? maCS;
 
-    let result = await request.execute('usp_GetRegistrationResult');
+     const request = createRequest(maCS, null, pool);
+     request.input('ID_student', ID_TYPE, maSV);
+     request.input('ID_headquarter', ID_TYPE, resolvedHeadquarter);
 
-    if (result.recordset.length === 0 && resolvedHeadquarter) {
-      const fallbackRequest = createRequest(maCS, null, pool);
-      fallbackRequest.input('ID_student', ID_TYPE, maSV);
-      result = await fallbackRequest.execute('usp_GetRegistrationResult');
-    }
+     let result = await request.execute('usp_GetRegistrationResult');
 
-    return res.json({
-      success: true,
-      data: result.recordset
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
+     if (result.recordset.length === 0 && resolvedHeadquarter) {
+       const fallbackRequest = createRequest(maCS, null, pool);
+       fallbackRequest.input('ID_student', ID_TYPE, maSV);
+       result = await fallbackRequest.execute('usp_GetRegistrationResult');
+     }
+
+     const data = result.recordset;
+     setCachedResult(maSV, maCS, 'registrations', data);
+
+     return res.json({
+       success: true,
+       data,
+       cached: false
+     });
+   } catch (error) {
+     return sendError(res, error);
+   }
+ });
 
 router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const maSV = req.user?.id;
-  const maCS = normalizeNodeKey(req.user?.maCS);
-  const headquarterId = getHeadquarterId(maCS) ?? maCS;
+   const maSV = req.user?.id;
+   const maCS = normalizeNodeKey(req.user?.maCS);
+   const headquarterId = getHeadquarterId(maCS) ?? maCS;
 
-  if (!maSV || !maCS) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu thông tin sinh viên trong token.'
-    });
-  }
+   if (!maSV || !maCS) {
+     return res.status(400).json({
+       success: false,
+       message: 'Thiếu thông tin sinh viên trong token.'
+     });
+   }
 
-  try {
-    const pool = await safeGetPool(maCS);
-    const resolvedHeadquarter = (await fetchStudentHeadquarterId(maCS, maSV))
-      ?? getHeadquarterId(maCS)
-      ?? maCS;
+   try {
+     // Check cache first
+     const cached = getCachedResult(maSV, maCS, 'schedule');
+     if (cached) {
+       return res.json({
+         success: true,
+         data: cached,
+         meta: { offlineNodes: [] },
+         cached: true
+       });
+     }
 
-    const request = createRequest(maCS, null, pool);
-    request.input('ID_student', ID_TYPE, maSV);
-    request.input('ID_headquarter', ID_TYPE, resolvedHeadquarter);
+     const pool = await safeGetPool(maCS);
+     const resolvedHeadquarter = (await fetchStudentHeadquarterId(maCS, maSV))
+       ?? getHeadquarterId(maCS)
+       ?? maCS;
 
-    let result = await request.execute('usp_GetStudentTimetable');
+     const request = createRequest(maCS, null, pool);
+     request.input('ID_student', ID_TYPE, maSV);
+     request.input('ID_headquarter', ID_TYPE, resolvedHeadquarter);
 
-    if (result.recordset.length === 0 && resolvedHeadquarter) {
-      const fallbackRequest = createRequest(maCS, null, pool);
-      fallbackRequest.input('ID_student', ID_TYPE, maSV);
-      result = await fallbackRequest.execute('usp_GetStudentTimetable');
-    }
+     let result = await request.execute('usp_GetStudentTimetable');
 
-    return res.json({
-      success: true,
-      data: result.recordset,
-      meta: {
-        offlineNodes: []
-      }
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
+     if (result.recordset.length === 0 && resolvedHeadquarter) {
+       const fallbackRequest = createRequest(maCS, null, pool);
+       fallbackRequest.input('ID_student', ID_TYPE, maSV);
+       result = await fallbackRequest.execute('usp_GetStudentTimetable');
+     }
+
+     const data = result.recordset;
+     setCachedResult(maSV, maCS, 'schedule', data);
+
+     return res.json({
+       success: true,
+       data,
+       meta: { offlineNodes: [] },
+       cached: false
+     });
+   } catch (error) {
+     return sendError(res, error);
+   }
+ });
 
 router.get('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
   const nodeKey = resolveNode(req);

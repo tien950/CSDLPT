@@ -49,8 +49,9 @@ function getWeekDays(baseDate = new Date()) {
   return weekDays;
 }
 
-function groupScheduleByWeek(schedules) {
-  const grouped = {};
+function groupScheduleByDay(schedules) {
+  // Group by day first
+  const byDay = {};
 
   schedules.forEach(session => {
     if (!session.ngayHoc) return;
@@ -58,27 +59,21 @@ function groupScheduleByWeek(schedules) {
     const date = new Date(session.ngayHoc);
     const dayOfWeek = date.getDay();
     const dayNum = dayOfWeek === 0 ? 7 : dayOfWeek;
-    const formattedStart = formatTime(session.gioStart);
-    const formattedEnd = formatTime(session.gioEnd);
-    const time = `${formattedStart} - ${formattedEnd}`;
-    const key = `${dayNum}_${time}`;
+    const dayName = getDayOfWeekName(dayNum);
 
-    if (!grouped[key]) {
-      grouped[key] = {
+    if (!byDay[dayNum]) {
+      byDay[dayNum] = {
         dayNum,
-        dayName: getDayOfWeekName(dayNum),
-        time,
-        sessions: []
+        dayName,
+        slots: []
       };
     }
 
-    grouped[key].sessions.push(session);
+    byDay[dayNum].slots.push(session);
   });
 
-  return Object.values(grouped).sort((a, b) => {
-    if (a.dayNum !== b.dayNum) return a.dayNum - b.dayNum;
-    return a.time.localeCompare(b.time);
-  });
+  // Convert to array and sort by dayNum
+  return Object.values(byDay).sort((a, b) => a.dayNum - b.dayNum);
 }
 
 export default function XemThoiKhoaBieu({ apiBase, token }) {
@@ -93,7 +88,7 @@ export default function XemThoiKhoaBieu({ apiBase, token }) {
   }, []);
 
   useEffect(() => {
-    const grouped = groupScheduleByWeek(schedules);
+    const grouped = groupScheduleByDay(schedules);
     setGroupedSchedules(grouped);
   }, [schedules]);
 
@@ -150,7 +145,7 @@ export default function XemThoiKhoaBieu({ apiBase, token }) {
       ) : (
         <div>
           <p style={{ color: '#666', marginBottom: '1.5rem' }}>
-            Tổng số tiết học: <strong>{groupedSchedules.length}</strong>
+            Tổng số tiết học: <strong>{groupedSchedules.reduce((sum, day) => sum + day.slots.length, 0)}</strong>
           </p>
 
           <div style={{
@@ -213,81 +208,72 @@ export default function XemThoiKhoaBieu({ apiBase, token }) {
                 </tr>
               </thead>
               <tbody>
-                {groupedSchedules.map((slot, idx) => (
-                  <tr
-                    key={idx}
-                    style={{
-                      borderBottom: '1px solid #eee',
-                      backgroundColor: idx % 2 === 0 ? '#f9f9f9' : 'white'
-                    }}
-                  >
-                    <td style={{
-                      padding: '12px 8px',
-                      fontWeight: 'bold',
-                      color: '#1976d2'
-                    }}>
-                      {slot.dayName}
-                    </td>
-                    <td style={{
-                      padding: '12px 8px',
-                      color: '#d32f2f'
-                    }}>
-                      {slot.time}
-                    </td>
-                    <td style={{
-                      padding: '12px 8px'
-                    }}>
-                      {slot.sessions.map((s, i) => (
-                        <div key={i} style={{ marginBottom: i < slot.sessions.length - 1 ? '8px' : '0' }}>
-                          <strong>{s.tenMonHoc}</strong>
-                          <div style={{ fontSize: '0.85rem', color: '#666' }}>
-                            ca {s.caHoc} (Mã lớp: {s.ID_class})
-                          </div>
+                {groupedSchedules.map((dayGroup, dayIdx) => (
+                  dayGroup.slots.map((session, sessionIdx) => (
+                    <tr
+                      key={`${dayIdx}-${sessionIdx}`}
+                      style={{
+                        borderBottom: '1px solid #eee',
+                        backgroundColor: dayIdx % 2 === 0 ? '#f9f9f9' : 'white'
+                      }}
+                    >
+                      {sessionIdx === 0 && (
+                        <td
+                          rowSpan={dayGroup.slots.length}
+                          style={{
+                            padding: '12px 8px',
+                            fontWeight: 'bold',
+                            color: '#1976d2'
+                          }}
+                        >
+                          {dayGroup.dayName}
+                        </td>
+                      )}
+                      <td style={{
+                        padding: '12px 8px',
+                        color: '#d32f2f'
+                      }}>
+                        {(() => {
+                          const start = formatTime(session.gioStart);
+                          const end = formatTime(session.gioEnd);
+                          return `${start} - ${end}`;
+                        })()}
+                      </td>
+                      <td style={{
+                        padding: '12px 8px'
+                      }}>
+                        <strong>{session.tenMonHoc}</strong>
+                        <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                          ca {session.caHoc} (Mã lớp: {session.ID_class})
                         </div>
-                      ))}
-                    </td>
-                    <td style={{
-                      padding: '12px 8px'
-                    }}>
-                      {slot.sessions.map((s, i) => (
-                        <div key={i} style={{ marginBottom: i < slot.sessions.length - 1 ? '8px' : '0' }}>
-                          {s.giangVien}
-                        </div>
-                      ))}
-                    </td>
-                    <td style={{
-                      padding: '12px 8px',
-                      backgroundColor: '#e3f2fd'
-                    }}>
-                      {slot.sessions.map((s, i) => (
-                        <div key={i} style={{ marginBottom: i < slot.sessions.length - 1 ? '8px' : '0' }}>
-                          <strong>{s.phongHoc}</strong>
-                        </div>
-                      ))}
-                    </td>
-                    <td style={{
-                      padding: '12px 8px',
-                      fontSize: '0.9rem'
-                    }}>
-                      {slot.sessions.map((s, i) => (
-                        <div key={i} style={{ marginBottom: i < slot.sessions.length - 1 ? '8px' : '0' }}>
-                          {formatDate(s.ngayHoc)}
-                        </div>
-                      ))}
-                    </td>
-                    <td style={{
-                      padding: '12px 8px',
-                      fontSize: '0.85rem',
-                      color: '#666',
-                      fontStyle: 'italic'
-                    }}>
-                      {slot.sessions.map((s, i) => (
-                        <div key={i} style={{ marginBottom: i < slot.sessions.length - 1 ? '8px' : '0' }}>
-                          {s.ghiChu || '-'}
-                        </div>
-                      ))}
-                    </td>
-                  </tr>
+                      </td>
+                      <td style={{
+                        padding: '12px 8px'
+                      }}>
+                        {session.giangVien}
+                      </td>
+                      <td style={{
+                        padding: '12px 8px',
+                        backgroundColor: '#e3f2fd'
+                      }}>
+                        <strong>{session.phongHoc}</strong>
+                      </td>
+                      <td style={{
+                        padding: '12px 8px',
+                        fontSize: '0.9rem'
+                      }}>
+                        {formatDate(session.ngayHoc)}
+                      </td>
+                      <td style={{
+                        padding: '12px 8px',
+                        fontSize: '0.85rem',
+                        color: '#666',
+                        fontStyle: 'italic'
+                      }}>
+                        {session.ghiChu || '-'}
+                      </td>
+                    </tr>
+                  ))
                 ))}
               </tbody>
             </table>

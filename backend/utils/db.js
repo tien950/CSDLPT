@@ -12,12 +12,14 @@ const OFFLINE_CODES = new Set([
 
 export function isOfflineError(error) {
   if (!error) return false;
-  if (OFFLINE_CODES.has(error.code)) return true;
+  if (OFFLINE_CODES.has(error.code)) {
+    console.warn(`[DB] Offline error detected: ${error.code} - ${error.message}`);
+    return true;
+  }
   return /Failed to connect|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|socket/i.test(error.message ?? '');
 }
 
 export function createRequest(nodeKey, transaction, pool) {
-  console.log(`[DB] Querying node ${nodeKey}`);
   if (transaction) {
     return new sql.Request(transaction);
   }

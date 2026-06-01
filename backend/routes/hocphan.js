@@ -9,6 +9,40 @@ import { deleteRow, insertRow, queryRows, updateRow } from '../utils/tableCrud.j
 const router = express.Router();
 const ID_TYPE = sql.NVarChar(50);
 
+// Query result cache: { "HQHL": { data: [...], timestamp: 1625..., ttl: 5min } }
+const queryCache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCacheKey(nodeKey, query) {
+  return `${nodeKey}:${query}`;
+}
+
+function getCachedResult(nodeKey, queryName) {
+  const key = getCacheKey(nodeKey, queryName);
+  const cached = queryCache.get(key);
+  if (!cached) return null;
+
+  const ageMs = Date.now() - cached.timestamp;
+  if (ageMs > CACHE_TTL_MS) {
+    queryCache.delete(key);
+    return null;
+  }
+
+  console.log(`[CACHE] HIT: ${key} (age: ${Math.round(ageMs / 1000)}s)`);
+  return cached.data;
+}
+
+function setCachedResult(nodeKey, queryName, data) {
+  const key = getCacheKey(nodeKey, queryName);
+  queryCache.set(key, {
+    data,
+    timestamp: Date.now()
+  });
+  console.log(`[CACHE] SET: ${key}`);
+}
+
+// ...existing code...
+
 function sendError(res, error) {
   if (isOfflineError(error)) {
     const node = error.node ?? 'UNKNOWN';
@@ -48,76 +82,100 @@ function ensureHQHD(req, res, next) {
 }
 
 router.get('/classes', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const maCSRaw = req.query.maCS;
-  const maCS = normalizeNodeKey(maCSRaw);
-  if (!maCS || !isValidNode(maCS)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Mã cơ sở không hợp lệ.'
-    });
-  }
-
-  try {
-    const pool = await safeGetPool(maCS);
-    const request = createRequest(maCS, null, pool);
-    const result = await request.query(
-      `SELECT ID_class
-       FROM [class]
-       ORDER BY ID_class`
-    );
-
-    return res.json({
-      success: true,
-      data: result.recordset.map(row => ({
-        id_class: row.ID_class
-      }))
-    });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
-
-router.get('/available', authenticate, requireRole(['sinhvien']), async (req, res) => {
-   const maCS = normalizeNodeKey(req.query.maCS) || normalizeNodeKey(req.user?.maCS);
-
-   if (!maCS) {
+   const maCSRaw = req.query.maCS;
+   const maCS = normalizeNodeKey(maCSRaw);
+   if (!maCS || !isValidNode(maCS)) {
      return res.status(400).json({
        success: false,
-       message: 'Thiếu thông tin cơ sở.'
+       message: 'Mã cơ sở không hợp lệ.'
      });
    }
 
    try {
      const pool = await safeGetPool(maCS);
      const request = createRequest(maCS, null, pool);
-     const result = await request.query(
-       `SELECT 
-          c.ID_class AS maMH,
-          s.name_subject AS tenMonHoc,
-          s.number_of_credit AS soTC,
-          c.group_number AS nhom,
-          t.name_teacher AS giangVien,
-          c.max_students AS siSoToiDa,
-          c.number_of_registration AS siSoDaDangKy,
-          (c.max_students - c.number_of_registration) AS conLai,
-          c.class_status AS trangThai,
-          tm.name_term AS hocKy
-        FROM [class] c
-        JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
-        JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-        JOIN term tm ON tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
-        WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
-          AND c.max_students > c.number_of_registration
-        ORDER BY c.ID_class`
-     );
+     let result;
+     try {
+       result = await request.query(
+         `SELECT ID_class
+          FROM [class]
+          ORDER BY ID_class`
+       );
+     } catch (error) {
+       throw withNode(maCS, error);
+     }
 
      return res.json({
        success: true,
-       data: result.recordset
+       data: result.recordset.map(row => ({
+         id_class: row.ID_class
+       }))
      });
    } catch (error) {
      return sendError(res, error);
    }
+});
+
+router.get('/available', authenticate, requireRole(['sinhvien']), async (req, res) => {
+    const maCS = normalizeNodeKey(req.query.maCS) || normalizeNodeKey(req.user?.maCS);
+
+    if (!maCS) {
+      return res.status(400).json({
+        success: false,
+        message: 'Thiếu thông tin cơ sở.'
+      });
+    }
+
+    try {
+      // Try cache first
+      const cached = getCachedResult(maCS, 'available');
+      if (cached) {
+        return res.json({
+          success: true,
+          data: cached,
+          cached: true
+        });
+      }
+
+      const pool = await safeGetPool(maCS);
+      const request = createRequest(maCS, null, pool);
+      let result;
+      try {
+        result = await request.query(
+          `SELECT TOP 100
+             c.ID_class AS maMH,
+             s.name_subject AS tenMonHoc,
+             s.number_of_credit AS soTC,
+             c.group_number AS nhom,
+             t.name_teacher AS giangVien,
+             c.max_students AS siSoToiDa,
+             c.number_of_registration AS siSoDaDangKy,
+             (c.max_students - c.number_of_registration) AS conLai,
+             c.class_status AS trangThai,
+             tm.name_term AS hocKy
+           FROM [class] c
+           JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
+           JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+           JOIN term tm ON tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
+           WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
+             AND c.max_students > c.number_of_registration
+           ORDER BY c.ID_class`
+        );
+      } catch (error) {
+        throw withNode(maCS, error);
+      }
+
+      const data = result.recordset;
+      setCachedResult(maCS, 'available', data);
+
+      return res.json({
+        success: true,
+        data,
+        cached: false
+      });
+    } catch (error) {
+      return sendError(res, error);
+    }
 });
 
 router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async (req, res) => {
@@ -135,22 +193,27 @@ router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async 
      const pool = await safeGetPool(maCS);
      const request = createRequest(maCS, null, pool);
      request.input('classId', ID_TYPE, classId);
-     const result = await request.query(
-       `SELECT 
-          s.ID_session AS ID_session,
-          s.study_date AS ngayHoc,
-          s.day_of_week AS thuHoc,
-          s.note AS ghiChu,
-          ts.shift_no AS caHoc,
-          ts.start_time AS gioStart,
-          ts.end_time AS gioEnd,
-          r.name_room AS phongHoc
-        FROM [session] s
-        JOIN timeslot ts ON ts.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS
-        JOIN room r ON r.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS
-        WHERE s.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @classId COLLATE SQL_Latin1_General_CP1_CI_AS
-        ORDER BY s.study_date, ts.shift_no`
-     );
+     let result;
+     try {
+       result = await request.query(
+         `SELECT 
+            s.ID_session AS ID_session,
+            s.study_date AS ngayHoc,
+            s.day_of_week AS thuHoc,
+            s.note AS ghiChu,
+            ts.shift_no AS caHoc,
+            ts.start_time AS gioStart,
+            ts.end_time AS gioEnd,
+            r.name_room AS phongHoc
+          FROM [session] s
+          JOIN timeslot ts ON ts.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS
+          JOIN room r ON r.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS
+          WHERE s.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @classId COLLATE SQL_Latin1_General_CP1_CI_AS
+          ORDER BY s.study_date, ts.shift_no`
+       );
+     } catch (error) {
+       throw withNode(maCS, error);
+     }
 
      return res.json({
        success: true,

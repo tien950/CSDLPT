@@ -2,6 +2,7 @@ import sql from 'mssql';
 import { getNode } from './nodes.js';
 
 const poolCache = new Map();
+const poolTimestamps = new Map(); // Track when pools were created
 
 function getEnvForNode(nodeKey, suffix) {
   const nodeSpecific = process.env[`${nodeKey}_${suffix}`];
@@ -40,8 +41,9 @@ function buildConfig(nodeKey) {
     options: {
       encrypt: false,
       trustServerCertificate: true,
-      connectionTimeout: 15000,
-      requestTimeout: 15000,
+      connectionTimeout: 30000,
+      requestTimeout: 90000,
+      cancelTimeout: 5000,
       ...(instanceName ? { instanceName } : {})
     }
   };
@@ -56,24 +58,42 @@ function buildConfig(nodeKey) {
 }
 
 export async function getPool(nodeKey) {
-  if (poolCache.has(nodeKey)) {
-    return poolCache.get(nodeKey);
-  }
+   if (poolCache.has(nodeKey)) {
+     const pool = poolCache.get(nodeKey);
+     // Recreate pool if older than 10 minutes to avoid stale connections
+     const createdAt = poolTimestamps.get(nodeKey) || 0;
+     const ageMs = Date.now() - createdAt;
+     if (ageMs > 10 * 60 * 1000) {
+       console.warn(`[DB] Pool for ${nodeKey} is old (${Math.round(ageMs / 1000)}s), recreating...`);
+       await pool.close().catch(() => {});
+       poolCache.delete(nodeKey);
+       poolTimestamps.delete(nodeKey);
+     } else {
+       return pool;
+     }
+   }
 
-  const config = buildConfig(nodeKey);
-  const pool = new sql.ConnectionPool(config);
-  const connectPromise = pool.connect().catch(error => {
-    console.error(`[DB] Connection failed for ${nodeKey}:`, error.message);
-    poolCache.delete(nodeKey);
-    throw error;
-  });
+   const config = buildConfig(nodeKey);
+   const pool = new sql.ConnectionPool(config);
+   
+   const connectPromise = pool.connect().catch(error => {
+     console.error(`[DB] Connection failed for ${nodeKey}:`, error.message);
+     console.error(`[DB] Error code: ${error.code}`);
+     poolCache.delete(nodeKey);
+     poolTimestamps.delete(nodeKey);
+     throw error;
+   });
 
-  poolCache.set(nodeKey, connectPromise);
-  return connectPromise;
-}
+   poolCache.set(nodeKey, pool);
+   poolTimestamps.set(nodeKey, Date.now());
+   return pool;
+ }
 
 export async function closePools() {
   const pools = Array.from(poolCache.values());
   poolCache.clear();
-  await Promise.allSettled(pools.map(poolPromise => poolPromise.then(pool => pool.close())));
+  poolTimestamps.clear();
+  await Promise.allSettled(pools.map(pool => pool.close()));
 }
+
+

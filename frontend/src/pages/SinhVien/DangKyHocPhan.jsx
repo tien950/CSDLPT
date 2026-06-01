@@ -14,6 +14,13 @@ function formatMessage(payload) {
   return payload.message ?? 'Có lỗi xảy ra.';
 }
 
+function deduplicateMessages(messages) {
+  if (!Array.isArray(messages)) {
+    return messages;
+  }
+  return Array.from(new Set(messages)).join(' | ');
+}
+
 export default function DangKyHocPhan({ apiBase, token, user }) {
   const [maLop, setMaLop] = useState('');
   const [maCSLop, setMaCSLop] = useState(user.maCS);
@@ -50,11 +57,16 @@ export default function DangKyHocPhan({ apiBase, token, user }) {
         if (!hasCurrent) {
           setMaLop(rows[0]?.id_class ?? '');
         }
-      } catch (error) {
-        if (!isActive) return;
-        setClassOptions([]);
-        setClassMessage(formatMessage(error));
-      } finally {
+       } catch (error) {
+         if (!isActive) return;
+         setClassOptions([]);
+         const msg = formatMessage(error);
+         // Deduplicate if message contains pipes
+         const dedupMsg = msg.includes(' | ')
+           ? deduplicateMessages(msg.split(' | '))
+           : msg;
+         setClassMessage(dedupMsg);
+       } finally {
         if (isActive) {
           setLoadingClasses(false);
         }
@@ -92,12 +104,17 @@ export default function DangKyHocPhan({ apiBase, token, user }) {
         text: `Đăng ký thành công lớp ${payload.data.maLop} tại cơ sở ${payload.data.maCSLop ?? payload.data.maCS}.`
       });
       setMaLop('');
-    } catch (error) {
-      setResult({
-        type: 'error',
-        text: formatMessage(error)
-      });
-    } finally {
+     } catch (error) {
+       const msg = formatMessage(error);
+       // Deduplicate if message contains pipes
+       const dedupMsg = msg.includes(' | ')
+         ? deduplicateMessages(msg.split(' | '))
+         : msg;
+       setResult({
+         type: 'error',
+         text: dedupMsg
+       });
+     } finally {
       setLoading(false);
     }
   };

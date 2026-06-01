@@ -88,51 +88,51 @@ export default function App() {
         </button>
       </header>
 
-      {user.role === 'sinhvien' && (
-        <>
-          <div style={{
-            display: 'flex',
-            gap: '1rem',
-            marginBottom: '1.5rem',
-            borderBottom: '2px solid #f0f0f0'
-          }}>
-            <button
-              onClick={() => setCurrentPage('danh-sach-dang-ky')}
-              style={{
-                padding: '12px 20px',
-                backgroundColor: currentPage === 'danh-sach-dang-ky' ? '#1976d2' : 'transparent',
-                color: currentPage === 'danh-sach-dang-ky' ? 'white' : '#666',
-                border: 'none',
-                borderBottom: currentPage === 'danh-sach-dang-ky' ? '3px solid #1976d2' : 'none',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                fontWeight: currentPage === 'danh-sach-dang-ky' ? 'bold' : 'normal',
-                transition: 'all 0.3s'
-              }}
-            >
-              Danh Sách Đăng Ký
-            </button>
-            <button
-              onClick={() => setCurrentPage('thoi-khoa-bieu')}
-              style={{
-                padding: '12px 20px',
-                backgroundColor: currentPage === 'thoi-khoa-bieu' ? '#1976d2' : 'transparent',
-                color: currentPage === 'thoi-khoa-bieu' ? 'white' : '#666',
-                border: 'none',
-                borderBottom: currentPage === 'thoi-khoa-bieu' ? '3px solid #1976d2' : 'none',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                fontWeight: currentPage === 'thoi-khoa-bieu' ? 'bold' : 'normal',
-                transition: 'all 0.3s'
-              }}
-            >
-              Thời Khóa Biểu
-            </button>
-          </div>
-          {currentPage === 'danh-sach-dang-ky' && <DanhSachDangKy apiBase={apiBase} token={auth.token} />}
-          {currentPage === 'thoi-khoa-bieu' && <XemThoiKhoaBieu apiBase={apiBase} token={auth.token} />}
-        </>
-      )}
+       {user.role === 'sinhvien' && (
+         <>
+           <div style={{
+             display: 'flex',
+             gap: '1rem',
+             marginBottom: '1.5rem',
+             borderBottom: '2px solid #f0f0f0'
+           }}>
+             <button
+               onClick={() => setCurrentPage('danh-sach-dang-ky')}
+               style={{
+                 padding: '12px 20px',
+                 backgroundColor: currentPage === 'danh-sach-dang-ky' ? '#1976d2' : 'transparent',
+                 color: currentPage === 'danh-sach-dang-ky' ? 'white' : '#666',
+                 border: 'none',
+                 borderBottom: currentPage === 'danh-sach-dang-ky' ? '3px solid #1976d2' : 'none',
+                 cursor: 'pointer',
+                 fontSize: '1rem',
+                 fontWeight: currentPage === 'danh-sach-dang-ky' ? 'bold' : 'normal',
+                 transition: 'all 0.3s'
+               }}
+             >
+               Danh Sách Đăng Ký
+             </button>
+             <button
+               onClick={() => setCurrentPage('thoi-khoa-bieu')}
+               style={{
+                 padding: '12px 20px',
+                 backgroundColor: currentPage === 'thoi-khoa-bieu' ? '#1976d2' : 'transparent',
+                 color: currentPage === 'thoi-khoa-bieu' ? 'white' : '#666',
+                 border: 'none',
+                 borderBottom: currentPage === 'thoi-khoa-bieu' ? '3px solid #1976d2' : 'none',
+                 cursor: 'pointer',
+                 fontSize: '1rem',
+                 fontWeight: currentPage === 'thoi-khoa-bieu' ? 'bold' : 'normal',
+                 transition: 'all 0.3s'
+               }}
+             >
+               Thời Khóa Biểu
+             </button>
+           </div>
+           {currentPage === 'danh-sach-dang-ky' && <DanhSachDangKy apiBase={apiBase} token={auth.token} />}
+           {currentPage === 'thoi-khoa-bieu' && <XemThoiKhoaBieu apiBase={apiBase} token={auth.token} />}
+         </>
+       )}
 
       {(user.role === 'quantrivien' || user.role === 'nhanvien') && (
         <>
