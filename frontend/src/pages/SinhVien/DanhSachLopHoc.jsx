@@ -5,7 +5,7 @@ import { apiFetch } from '../../config/api.js';
 const campusOptions = [
   { value: 'HQHD', label: 'Hà Đông' },
   { value: 'HQHL', label: 'Hòa Lạc' },
-  { value: 'HQHCM', label: 'TP. HCM' }
+  { value: 'HQHCM', label: 'TP. HCM' },
 ];
 
 function formatMessage(payload) {
@@ -23,11 +23,16 @@ export default function DanhSachLopHoc({ user }) {
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [pagination, setPagination] = useState({ page: 1, pageSize: 20, total: 0, pages: 0 });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    pages: 0,
+  });
   const [cache, setCache] = useState({});
 
   const campusLabel = useMemo(() => {
-    const option = campusOptions.find(item => item.value === user?.maCS);
+    const option = campusOptions.find((item) => item.value === user?.maCS);
     return option ? option.label : user?.maCS;
   }, [user?.maCS]);
 
@@ -47,7 +52,7 @@ export default function DanhSachLopHoc({ user }) {
       try {
         const payload = await apiFetch(
           `/api/hocphan/available?maCS=${maCS}&page=${page}&pageSize=20`,
-          maCS
+          maCS,
         );
 
         if (!payload?.success) {
@@ -61,12 +66,12 @@ export default function DanhSachLopHoc({ user }) {
           setClasses(data);
           setPagination(payload.pagination);
 
-          setCache(prev => ({
+          setCache((prev) => ({
             ...prev,
             [cacheKey]: {
               data,
-              pagination: payload.pagination
-            }
+              pagination: payload.pagination,
+            },
           }));
         }
       } catch (err) {
@@ -99,13 +104,13 @@ export default function DanhSachLopHoc({ user }) {
           Cơ sở:
           <select
             value={maCS ?? ''}
-            onChange={e => {
+            onChange={(e) => {
               setMaCS(e.target.value);
               setPage(1);
             }}
             style={{ marginLeft: '8px', padding: '8px' }}
           >
-            {campusOptions.map(option => (
+            {campusOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -143,24 +148,84 @@ export default function DanhSachLopHoc({ user }) {
           </p>
 
           <div style={{ overflowX: 'auto' }}>
-            <table style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              minWidth: '800px'
-            }}>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                minWidth: '800px',
+              }}
+            >
               <thead>
-                <tr style={{
-                  backgroundColor: '#1976d2',
-                  color: 'white',
-                  borderBottom: '2px solid #1976d2'
-                }}>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', width: '12%' }}>Mã Lớp</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', width: '18%' }}>Môn Học</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', width: '12%' }}>Số TC</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', width: '14%' }}>Giảng Viên</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', width: '10%' }}>Sĩ số</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', width: '12%' }}>Còn Lại</th>
-                  <th style={{ padding: '12px 8px', textAlign: 'left', width: '12%' }}>Học Kỳ</th>
+                <tr
+                  style={{
+                    backgroundColor: '#1976d2',
+                    color: 'white',
+                    borderBottom: '2px solid #1976d2',
+                  }}
+                >
+                  <th
+                    style={{
+                      padding: '12px 8px',
+                      textAlign: 'left',
+                      width: '12%',
+                    }}
+                  >
+                    Mã Lớp
+                  </th>
+                  <th
+                    style={{
+                      padding: '12px 8px',
+                      textAlign: 'left',
+                      width: '18%',
+                    }}
+                  >
+                    Môn Học
+                  </th>
+                  <th
+                    style={{
+                      padding: '12px 8px',
+                      textAlign: 'left',
+                      width: '12%',
+                    }}
+                  >
+                    Số TC
+                  </th>
+                  <th
+                    style={{
+                      padding: '12px 8px',
+                      textAlign: 'left',
+                      width: '14%',
+                    }}
+                  >
+                    Giảng Viên
+                  </th>
+                  <th
+                    style={{
+                      padding: '12px 8px',
+                      textAlign: 'left',
+                      width: '10%',
+                    }}
+                  >
+                    Sĩ số
+                  </th>
+                  <th
+                    style={{
+                      padding: '12px 8px',
+                      textAlign: 'left',
+                      width: '12%',
+                    }}
+                  >
+                    Còn Lại
+                  </th>
+                  <th
+                    style={{
+                      padding: '12px 8px',
+                      textAlign: 'left',
+                      width: '12%',
+                    }}
+                  >
+                    Học Kỳ
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -169,22 +234,28 @@ export default function DanhSachLopHoc({ user }) {
                     key={`${cls.maMH}-${idx}`}
                     style={{
                       borderBottom: '1px solid #eee',
-                      backgroundColor: idx % 2 === 0 ? '#f9f9f9' : 'white'
+                      backgroundColor: idx % 2 === 0 ? '#f9f9f9' : 'white',
                     }}
                   >
                     <td style={{ padding: '12px 8px', fontWeight: 'bold' }}>
                       <span style={{ color: '#1976d2' }}>{cls.maMH}</span>
                     </td>
                     <td style={{ padding: '12px 8px' }}>{cls.tenMonHoc}</td>
-                    <td style={{ padding: '12px 8px', textAlign: 'center' }}>{cls.soTC}</td>
+                    <td style={{ padding: '12px 8px', textAlign: 'center' }}>
+                      {cls.soTC}
+                    </td>
                     <td style={{ padding: '12px 8px' }}>{cls.giangVien}</td>
-                    <td style={{ padding: '12px 8px', textAlign: 'center' }}>{cls.siSoToiDa}</td>
-                    <td style={{
-                      padding: '12px 8px',
-                      textAlign: 'center',
-                      color: cls.conLai < 5 ? '#d32f2f' : '#388e3c',
-                      fontWeight: 'bold'
-                    }}>
+                    <td style={{ padding: '12px 8px', textAlign: 'center' }}>
+                      {cls.siSoToiDa}
+                    </td>
+                    <td
+                      style={{
+                        padding: '12px 8px',
+                        textAlign: 'center',
+                        color: cls.conLai < 5 ? '#d32f2f' : '#388e3c',
+                        fontWeight: 'bold',
+                      }}
+                    >
                       {cls.conLai}
                     </td>
                     <td style={{ padding: '12px 8px' }}>{cls.hocKy}</td>
@@ -205,4 +276,3 @@ export default function DanhSachLopHoc({ user }) {
     </section>
   );
 }
-

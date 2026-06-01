@@ -4,15 +4,24 @@ import { apiFetch } from '../../config/api.js';
 const NODE_OPTIONS = [
   { key: 'HQHD', label: 'Hà Đông' },
   { key: 'HQHL', label: 'Hòa Lạc' },
-  { key: 'HQHCM', label: 'TP. Hồ Chí Minh' }
+  { key: 'HQHCM', label: 'TP. Hồ Chí Minh' },
 ];
 
-const NUMBER_TYPES = new Set(['int', 'bigint', 'smallint', 'tinyint', 'decimal', 'numeric', 'float', 'real']);
+const NUMBER_TYPES = new Set([
+  'int',
+  'bigint',
+  'smallint',
+  'tinyint',
+  'decimal',
+  'numeric',
+  'float',
+  'real',
+]);
 const EXCLUDED_COLUMNS = new Set(['rowguid']);
 const GENDER_OPTIONS = [
   { value: 'Nam', label: 'Nam' },
   { value: 'Nữ', label: 'Nữ' },
-  { value: 'Khác', label: 'Khác' }
+  { value: 'Khác', label: 'Khác' },
 ];
 const DEGREE_OPTIONS = [
   { value: 'Tiến sĩ', label: 'Tiến sĩ' },
@@ -20,7 +29,7 @@ const DEGREE_OPTIONS = [
   { value: 'Cử nhân', label: 'Cử nhân' },
   { value: 'Kỹ sư', label: 'Kỹ sư' },
   { value: 'Cao đẳng', label: 'Cao đẳng' },
-  { value: 'Trung cấp', label: 'Trung cấp' }
+  { value: 'Trung cấp', label: 'Trung cấp' },
 ];
 
 function normalizeColumnName(name) {
@@ -29,22 +38,40 @@ function normalizeColumnName(name) {
 
 function isGenderColumn(columnName) {
   const name = normalizeColumnName(columnName);
-  return name.includes('gender') || name.includes('gioitinh') || name.includes('gioi_tinh') || name.includes('sex');
+  return (
+    name.includes('gender') ||
+    name.includes('gioitinh') ||
+    name.includes('gioi_tinh') ||
+    name.includes('sex')
+  );
 }
 
 function isDepartmentColumn(columnName) {
   const name = normalizeColumnName(columnName);
-  return name.includes('department') || name.includes('phong_ban') || name.includes('phongban');
+  return (
+    name.includes('department') ||
+    name.includes('phong_ban') ||
+    name.includes('phongban')
+  );
 }
 
 function isCurriculumColumn(columnName) {
   const name = normalizeColumnName(columnName);
-  return name.includes('curriculum') || name.includes('chuong_trinh') || name.includes('program');
+  return (
+    name.includes('curriculum') ||
+    name.includes('chuong_trinh') ||
+    name.includes('program')
+  );
 }
 
 function isDegreeColumn(columnName) {
   const name = normalizeColumnName(columnName);
-  return name === 'degree' || name.includes('degree') || name.includes('trinh_do') || name.includes('trình_độ');
+  return (
+    name === 'degree' ||
+    name.includes('degree') ||
+    name.includes('trinh_do') ||
+    name.includes('trình_độ')
+  );
 }
 
 function isDateColumn(column) {
@@ -78,14 +105,17 @@ function formatDateDisplay(value) {
     timeZone: 'Asia/Ho_Chi_Minh',
     year: 'numeric',
     month: '2-digit',
-    day: '2-digit'
+    day: '2-digit',
   }).format(date);
 }
 
 function getOptionValue(row) {
   if (row === null || row === undefined) return '';
-  if (Object.prototype.hasOwnProperty.call(row, 'ID_department')) return row.ID_department ?? '';
-  const idKey = Object.keys(row).find(key => normalizeColumnName(key).startsWith('id_'));
+  if (Object.prototype.hasOwnProperty.call(row, 'ID_department'))
+    return row.ID_department ?? '';
+  const idKey = Object.keys(row).find((key) =>
+    normalizeColumnName(key).startsWith('id_'),
+  );
   if (idKey) return row[idKey] ?? '';
   return Object.values(row)[0] ?? '';
 }
@@ -97,8 +127,12 @@ function getOptionLabel(row) {
     return !EXCLUDED_COLUMNS.has(normalizeColumnName(key));
   });
 
-  const idEntry = entries.find(([key]) => normalizeColumnName(key).startsWith('id_'));
-  const labelEntry = entries.find(([key]) => !normalizeColumnName(key).startsWith('id_'));
+  const idEntry = entries.find(([key]) =>
+    normalizeColumnName(key).startsWith('id_'),
+  );
+  const labelEntry = entries.find(
+    ([key]) => !normalizeColumnName(key).startsWith('id_'),
+  );
 
   if (!idEntry && !labelEntry) return '';
   if (!idEntry) return String(labelEntry[1]);
@@ -109,15 +143,24 @@ function getOptionLabel(row) {
 
 function getCurriculumOptionValue(row) {
   if (row === null || row === undefined) return '';
-  if (Object.prototype.hasOwnProperty.call(row, 'ID_curriculum')) return row.ID_curriculum ?? '';
-  const idKey = Object.keys(row).find(key => normalizeColumnName(key).startsWith('id_'));
+  if (Object.prototype.hasOwnProperty.call(row, 'ID_curriculum'))
+    return row.ID_curriculum ?? '';
+  const idKey = Object.keys(row).find((key) =>
+    normalizeColumnName(key).startsWith('id_'),
+  );
   if (idKey) return row[idKey] ?? '';
   return Object.values(row)[0] ?? '';
 }
 
 function getCurriculumOptionLabel(row) {
   if (row === null || row === undefined) return '';
-  const preferredKeys = ['name_curriculum', 'curriculum_name', 'ten_curriculum', 'name_program', 'program_name'];
+  const preferredKeys = [
+    'name_curriculum',
+    'curriculum_name',
+    'ten_curriculum',
+    'name_program',
+    'program_name',
+  ];
   for (const key of preferredKeys) {
     if (Object.prototype.hasOwnProperty.call(row, key) && row[key]) {
       return String(row[key]);
@@ -132,8 +175,10 @@ function normalizeValue(value, dataType) {
   const type = String(dataType).toLowerCase();
 
   if (type === 'bit') {
-    if (value === true || value === 'true' || value === 1 || value === '1') return true;
-    if (value === false || value === 'false' || value === 0 || value === '0') return false;
+    if (value === true || value === 'true' || value === 1 || value === '1')
+      return true;
+    if (value === false || value === 'false' || value === 0 || value === '0')
+      return false;
     return null;
   }
 
@@ -172,8 +217,11 @@ export default function QuanLyDuLieu({ user }) {
   const primaryKeys = useMemo(() => meta?.primaryKeys ?? [], [meta]);
   const primaryKeySet = useMemo(() => new Set(primaryKeys), [primaryKeys]);
   const visibleColumns = useMemo(
-    () => (meta?.columns ?? []).filter(column => !EXCLUDED_COLUMNS.has(String(column.name).toLowerCase())),
-    [meta]
+    () =>
+      (meta?.columns ?? []).filter(
+        (column) => !EXCLUDED_COLUMNS.has(String(column.name).toLowerCase()),
+      ),
+    [meta],
   );
 
   useEffect(() => {
@@ -206,10 +254,12 @@ export default function QuanLyDuLieu({ user }) {
         const query = canPickNode ? `?maCS=${nodeKey}` : '';
         const [metaData, data] = await Promise.all([
           apiFetch(`/api/admin/meta/${selectedTable}${query}`, currentCampus),
-          apiFetch(`/api/admin/${selectedTable}${query}`, currentCampus)
+          apiFetch(`/api/admin/${selectedTable}${query}`, currentCampus),
         ]);
         if (!metaData.success || !data.success) {
-          setError(metaData.message || data.message || 'Không thể tải dữ liệu.');
+          setError(
+            metaData.message || data.message || 'Không thể tải dữ liệu.',
+          );
           setMeta(null);
           setRows([]);
         } else {
@@ -234,7 +284,10 @@ export default function QuanLyDuLieu({ user }) {
     const fetchDepartmentOptions = async () => {
       try {
         const query = canPickNode ? `?maCS=${nodeKey}` : '';
-        const data = await apiFetch(`/api/admin/department${query}`, currentCampus);
+        const data = await apiFetch(
+          `/api/admin/department${query}`,
+          currentCampus,
+        );
         if (data.success) {
           setDepartmentOptions(data.data ?? []);
         } else {
@@ -252,7 +305,10 @@ export default function QuanLyDuLieu({ user }) {
     const fetchCurriculumOptions = async () => {
       try {
         const query = canPickNode ? `?maCS=${nodeKey}` : '';
-        const data = await apiFetch(`/api/admin/curriculum${query}`, currentCampus);
+        const data = await apiFetch(
+          `/api/admin/curriculum${query}`,
+          currentCampus,
+        );
         if (data.success) {
           setCurriculumOptions(data.data ?? []);
         } else {
@@ -267,9 +323,9 @@ export default function QuanLyDuLieu({ user }) {
   }, [nodeKey, canPickNode, selectedTable, currentCampus]);
 
   const handleInputChange = (columnName, value) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [columnName]: value
+      [columnName]: value,
     }));
   };
 
@@ -280,15 +336,17 @@ export default function QuanLyDuLieu({ user }) {
 
   const handleEdit = (row) => {
     const keys = {};
-    primaryKeys.forEach(key => {
+    primaryKeys.forEach((key) => {
       keys[key] = row[key];
     });
     setEditKeys(keys);
 
     const nextForm = {};
-    visibleColumns.forEach(column => {
+    visibleColumns.forEach((column) => {
       if (column.isIdentity) return;
-      nextForm[column.name] = isDateColumn(column) ? toDateInputValue(row[column.name]) : (row[column.name] ?? '');
+      nextForm[column.name] = isDateColumn(column)
+        ? toDateInputValue(row[column.name])
+        : (row[column.name] ?? '');
     });
     setFormData(nextForm);
   };
@@ -298,7 +356,7 @@ export default function QuanLyDuLieu({ user }) {
     if (!meta) return;
 
     const keys = {};
-    primaryKeys.forEach(key => {
+    primaryKeys.forEach((key) => {
       keys[key] = row[key];
     });
 
@@ -309,18 +367,22 @@ export default function QuanLyDuLieu({ user }) {
 
     setSaving(true);
     try {
-      const data = await apiFetch(`/api/admin/${selectedTable}`, currentCampus, {
-        method: 'DELETE',
-        body: {
-          maCS: canPickNode ? nodeKey : undefined,
-          keys
-        }
-      });
+      const data = await apiFetch(
+        `/api/admin/${selectedTable}`,
+        currentCampus,
+        {
+          method: 'DELETE',
+          body: {
+            maCS: canPickNode ? nodeKey : undefined,
+            keys,
+          },
+        },
+      );
       if (!data.success) {
         alert(data.message || 'Xóa thất bại.');
         return;
       }
-      setRows(prev => prev.filter(item => item !== row));
+      setRows((prev) => prev.filter((item) => item !== row));
       resetForm();
     } catch (err) {
       alert('Có lỗi khi xóa: ' + err.message);
@@ -335,17 +397,20 @@ export default function QuanLyDuLieu({ user }) {
 
     const columns = visibleColumns;
     const payload = {};
-    columns.forEach(column => {
+    columns.forEach((column) => {
       if (column.isIdentity) return;
       if (editKeys && primaryKeySet.has(column.name)) return;
-      payload[column.name] = normalizeValue(formData[column.name], column.dataType);
+      payload[column.name] = normalizeValue(
+        formData[column.name],
+        column.dataType,
+      );
     });
 
     setSaving(true);
     try {
       const body = {
         maCS: canPickNode ? nodeKey : undefined,
-        data: payload
+        data: payload,
       };
 
       let url = `/api/admin/${selectedTable}`;
@@ -358,7 +423,7 @@ export default function QuanLyDuLieu({ user }) {
 
       const data = await apiFetch(url, currentCampus, {
         method,
-        body
+        body,
       });
 
       if (!data.success) {
@@ -368,7 +433,7 @@ export default function QuanLyDuLieu({ user }) {
 
       const refreshData = await apiFetch(
         `/api/admin/${selectedTable}${canPickNode ? `?maCS=${nodeKey}` : ''}`,
-        currentCampus
+        currentCampus,
       );
       if (refreshData.success) {
         setRows(refreshData.data ?? []);
@@ -382,8 +447,8 @@ export default function QuanLyDuLieu({ user }) {
   };
 
   const editableColumns = useMemo(
-    () => visibleColumns.filter(column => !column.isIdentity),
-    [visibleColumns]
+    () => visibleColumns.filter((column) => !column.isIdentity),
+    [visibleColumns],
   );
 
   const renderField = (column) => {
@@ -399,12 +464,14 @@ export default function QuanLyDuLieu({ user }) {
       return (
         <select
           value={formData[fieldName] ?? ''}
-          onChange={event => handleInputChange(fieldName, event.target.value)}
+          onChange={(event) => handleInputChange(fieldName, event.target.value)}
           disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
         >
           <option value="">-</option>
-          {GENDER_OPTIONS.map(option => (
-            <option key={option.value} value={option.value}>{option.label}</option>
+          {GENDER_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
           ))}
         </select>
       );
@@ -414,13 +481,14 @@ export default function QuanLyDuLieu({ user }) {
       return (
         <select
           value={formData[fieldName] ?? ''}
-          onChange={event => handleInputChange(fieldName, event.target.value)}
+          onChange={(event) => handleInputChange(fieldName, event.target.value)}
           disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
         >
           <option value="">-</option>
           {departmentOptions.map((option, index) => {
             const value = getOptionValue(option);
-            const label = getOptionLabel(option) || String(value || `Mục ${index + 1}`);
+            const label =
+              getOptionLabel(option) || String(value || `Mục ${index + 1}`);
             return (
               <option key={`${value}-${index}`} value={value}>
                 {label}
@@ -435,13 +503,15 @@ export default function QuanLyDuLieu({ user }) {
       return (
         <select
           value={formData[fieldName] ?? ''}
-          onChange={event => handleInputChange(fieldName, event.target.value)}
+          onChange={(event) => handleInputChange(fieldName, event.target.value)}
           disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
         >
           <option value="">-</option>
           {curriculumOptions.map((option, index) => {
             const value = getCurriculumOptionValue(option);
-            const label = getCurriculumOptionLabel(option) || String(value || `Mục ${index + 1}`);
+            const label =
+              getCurriculumOptionLabel(option) ||
+              String(value || `Mục ${index + 1}`);
             return (
               <option key={`${value}-${index}`} value={value}>
                 {label}
@@ -456,12 +526,14 @@ export default function QuanLyDuLieu({ user }) {
       return (
         <select
           value={formData[fieldName] ?? ''}
-          onChange={event => handleInputChange(fieldName, event.target.value)}
+          onChange={(event) => handleInputChange(fieldName, event.target.value)}
           disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
         >
           <option value="">-</option>
-          {DEGREE_OPTIONS.map(option => (
-            <option key={option.value} value={option.value}>{option.label}</option>
+          {DEGREE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
           ))}
         </select>
       );
@@ -472,7 +544,7 @@ export default function QuanLyDuLieu({ user }) {
         <input
           type="date"
           value={formData[fieldName] ?? ''}
-          onChange={event => handleInputChange(fieldName, event.target.value)}
+          onChange={(event) => handleInputChange(fieldName, event.target.value)}
           disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
         />
       );
@@ -488,7 +560,9 @@ export default function QuanLyDuLieu({ user }) {
                 ? 'false'
                 : ''
           }
-          onChange={event => handleInputChange(fieldName, event.target.value === 'true')}
+          onChange={(event) =>
+            handleInputChange(fieldName, event.target.value === 'true')
+          }
           disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
         >
           <option value="">-</option>
@@ -501,7 +575,7 @@ export default function QuanLyDuLieu({ user }) {
     return (
       <input
         value={formData[fieldName] ?? ''}
-        onChange={event => handleInputChange(fieldName, event.target.value)}
+        onChange={(event) => handleInputChange(fieldName, event.target.value)}
         disabled={Boolean(editKeys && primaryKeySet.has(fieldName))}
       />
     );
@@ -511,24 +585,49 @@ export default function QuanLyDuLieu({ user }) {
     <div className="stack">
       <section className="card">
         <h2>Quản lý dữ liệu</h2>
-        <p className="subtitle">Cập nhật danh mục cơ sở, sinh viên, giảng viên, học phần, lớp học phần và phòng học.</p>
-        {error && <div className="alert" style={{ marginTop: '12px' }}>{error}</div>}
+        <p className="subtitle">
+          Cập nhật danh mục cơ sở, sinh viên, giảng viên, học phần, lớp học phần
+          và phòng học.
+        </p>
+        {error && (
+          <div className="alert" style={{ marginTop: '12px' }}>
+            {error}
+          </div>
+        )}
 
-        <div style={{ marginTop: '16px', display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
+        <div
+          style={{
+            marginTop: '16px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '16px',
+          }}
+        >
           <label style={{ minWidth: '220px' }}>
             Bảng dữ liệu
-            <select value={selectedTable} onChange={event => setSelectedTable(event.target.value)}>
-              {tables.map(table => (
-                <option key={table.key} value={table.key}>{table.label}</option>
+            <select
+              value={selectedTable}
+              onChange={(event) => setSelectedTable(event.target.value)}
+            >
+              {tables.map((table) => (
+                <option key={table.key} value={table.key}>
+                  {table.label}
+                </option>
               ))}
             </select>
           </label>
 
           <label style={{ minWidth: '220px' }}>
             Cơ sở
-            <select value={nodeKey} onChange={event => setNodeKey(event.target.value)} disabled={!canPickNode}>
-              {NODE_OPTIONS.map(option => (
-                <option key={option.key} value={option.key}>{option.label}</option>
+            <select
+              value={nodeKey}
+              onChange={(event) => setNodeKey(event.target.value)}
+              disabled={!canPickNode}
+            >
+              {NODE_OPTIONS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </label>
@@ -544,7 +643,12 @@ export default function QuanLyDuLieu({ user }) {
       <section className="card">
         <div className="row">
           <h3>Danh sách dữ liệu</h3>
-          <button type="button" className="secondary" onClick={() => {}} disabled>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {}}
+            disabled
+          >
             Tổng số: {rows.length}
           </button>
         </div>
@@ -556,7 +660,7 @@ export default function QuanLyDuLieu({ user }) {
             <table className="data-table">
               <thead>
                 <tr>
-                  {visibleColumns.map(column => (
+                  {visibleColumns.map((column) => (
                     <th key={column.name}>{column.name}</th>
                   ))}
                   <th>Thao tác</th>
@@ -565,20 +669,43 @@ export default function QuanLyDuLieu({ user }) {
               <tbody>
                 {rows.map((row, index) => (
                   <tr key={index}>
-                    {visibleColumns.map(column => (
-                      <td key={column.name}>{formatValue(row[column.name], column)}</td>
+                    {visibleColumns.map((column) => (
+                      <td key={column.name}>
+                        {formatValue(row[column.name], column)}
+                      </td>
                     ))}
                     <td>
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <button type="button" className="secondary" onClick={() => handleEdit(row)}>Sửa</button>
-                        <button type="button" onClick={() => handleDelete(row)} disabled={saving}>Xóa</button>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: '8px',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => handleEdit(row)}
+                        >
+                          Sửa
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(row)}
+                          disabled={saving}
+                        >
+                          Xóa
+                        </button>
                       </div>
                     </td>
                   </tr>
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={visibleColumns.length + 1} style={{ textAlign: 'center', color: '#777' }}>
+                    <td
+                      colSpan={visibleColumns.length + 1}
+                      style={{ textAlign: 'center', color: '#777' }}
+                    >
                       Chưa có dữ liệu.
                     </td>
                   </tr>
@@ -592,7 +719,7 @@ export default function QuanLyDuLieu({ user }) {
       <section className="card">
         <h3>{editKeys ? 'Cập nhật dữ liệu' : 'Thêm mới dữ liệu'}</h3>
         <form className="form" onSubmit={handleSubmit}>
-          {editableColumns.map(column => (
+          {editableColumns.map((column) => (
             <label key={column.name}>
               {column.name}
               {renderField(column)}

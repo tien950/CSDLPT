@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { apiFetch } from '../config/api.js';
+import { authFetch } from '../config/api.js';
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -7,19 +7,24 @@ export default function Login({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
-  const handleSubmit = async event => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     setLoading(true);
     setMessage('');
 
     try {
-      const preferredCampus = localStorage.getItem('userNode') ?? 'HQHD';
-      const payload = await apiFetch('/api/auth/login', preferredCampus, {
+      const payload = await authFetch('/api/auth/login', {
         method: 'POST',
-        body: { username, password }
+        body: JSON.stringify({ username, password }),
       });
 
-      onLogin(payload.data);
+      const loginData = payload.data ?? payload;
+
+      if (!loginData.token) {
+        throw new Error('Backend không trả về token đăng nhập.');
+      }
+
+      onLogin(loginData);
     } catch (error) {
       setMessage(error.message ?? 'Có lỗi xảy ra.');
     } finally {
@@ -39,7 +44,7 @@ export default function Login({ onLogin }) {
             <input
               type="text"
               value={username}
-              onChange={event => setUsername(event.target.value)}
+              onChange={(event) => setUsername(event.target.value)}
               placeholder="b22cntt005"
               required
             />
@@ -50,7 +55,7 @@ export default function Login({ onLogin }) {
             <input
               type="password"
               value={password}
-              onChange={event => setPassword(event.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
               placeholder="123456"
               required
             />
@@ -66,14 +71,30 @@ export default function Login({ onLogin }) {
         <div className="demo-list">
           <p>Tài khoản mẫu:</p>
           <ul>
-            <li><strong>Sinh viên:</strong> b22cntt005 / 123456</li>
-            <li><strong>Sinh viên:</strong> b22attt005 / 123456</li>
-            <li><strong>Sinh viên:</strong> b22attt001 / 123456</li>
-            <li><strong>Giảng viên:</strong> gv_hd_01 / gv123</li>
-            <li><strong>Nhân viên:</strong> nv_hl_01 / nv123</li>
-            <li><strong>Nhân viên:</strong> nv_hd_01 / nv123</li>
-            <li><strong>Nhân viên:</strong> nv_hcm_01 / nv123</li>
-            <li><strong>Quản trị viên:</strong> qtv_01 / qtv123</li>
+            <li>
+              <strong>Sinh viên:</strong> b22cntt005 / 123456
+            </li>
+            <li>
+              <strong>Sinh viên:</strong> b22attt005 / 123456
+            </li>
+            <li>
+              <strong>Sinh viên:</strong> b22attt001 / 123456
+            </li>
+            <li>
+              <strong>Giảng viên:</strong> gv_hd_01 / gv123
+            </li>
+            <li>
+              <strong>Nhân viên:</strong> nv_hl_01 / nv123
+            </li>
+            <li>
+              <strong>Nhân viên:</strong> nv_hd_01 / nv123
+            </li>
+            <li>
+              <strong>Nhân viên:</strong> nv_hcm_01 / nv123
+            </li>
+            <li>
+              <strong>Quản trị viên:</strong> qtv_01 / qtv123
+            </li>
           </ul>
         </div>
       </div>
