@@ -6,7 +6,7 @@ const statusLabels = {
   error: 'Lỗi'
 };
 
-export default function NodeStatusBar({ apiBase, token, autoRefreshMs = 10000 }) {
+export default function NodeStatusBar({ apiBase, token, autoRefreshMs = 5000 }) {
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -17,16 +17,23 @@ export default function NodeStatusBar({ apiBase, token, autoRefreshMs = 10000 })
     setLoading(true);
     setMessage('');
     try {
-      const response = await fetch(`${apiBase}/api/nodes/status`, {
+      const response = await fetch(`${apiBase}/api/admin/node-status`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       });
       const payload = await response.json();
       if (!response.ok || !payload.success) {
-        throw new Error(payload.message ?? 'Không thể tải trạng thái node.');
+        setMessage(payload.message ?? 'Không thể tải trạng thái node.');
+        return;
       }
-      setNodes(payload.data ?? []);
+      const nodesPayload = payload.nodes ?? {};
+      const rows = Object.entries(nodesPayload).map(([node, info]) => ({
+        node,
+        status: info.status ?? 'offline',
+        timestamp: info.timestamp ?? null
+      }));
+      setNodes(rows);
       setLastUpdated(new Date());
     } catch (error) {
       setMessage(error.message ?? 'Có lỗi xảy ra.');
@@ -120,7 +127,7 @@ export default function NodeStatusBar({ apiBase, token, autoRefreshMs = 10000 })
                     {statusLabels[node.status] ?? 'Không xác định'}
                   </span>
                 </td>
-                <td>{node.message ?? '-'}</td>
+                <td>{node.timestamp ?? '-'}</td>
               </tr>
             ))}
           </tbody>

@@ -2,8 +2,9 @@ import express from 'express';
 import sql from 'mssql';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { getPool } from '../config/db.js';
-import { isValidNode, normalizeNodeKey, nodeKeys } from '../config/nodes.js';
+import { LOCAL_NODE, isValidNode, normalizeNodeKey, nodeApiBase, nodeKeys } from '../config/nodes.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
+import { callRemoteNode } from '../utils/remoteApi.js';
 
 const router = express.Router();
 const COLLATION = 'SQL_Latin1_General_CP1_CI_AS';
@@ -50,6 +51,11 @@ async function safeGetPool(nodeKey) {
   } catch (error) {
     throw withNode(nodeKey, error);
   }
+}
+
+async function proxyIfRemote(req, nodeKey) {
+  if (!nodeKey || nodeKey === LOCAL_NODE) return null;
+  return await callRemoteNode(nodeKey, req.method, req.originalUrl, req.body ?? null, req.headers.authorization);
 }
 
 function resolveNodeKey(req) {
@@ -231,27 +237,62 @@ async function getTableMeta(nodeKey, table) {
   };
 }
 
-async function checkNode(nodeKey) {
+function buildTimestamp() {
+  return new Date().toISOString();
+}
+
+async function pingNode(nodeKey) {
+  if (nodeKey === LOCAL_NODE) {
+    return { status: 'online', timestamp: buildTimestamp() };
+  }
+
+  const baseUrl = nodeApiBase[nodeKey];
+  if (!baseUrl) {
+    return { status: 'offline', timestamp: buildTimestamp() };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3000);
+
   try {
-    const pool = await getPool(nodeKey);
-    const request = createRequest(nodeKey, null, pool);
-    await request.query('SELECT 1 AS ok');
-    return { node: nodeKey, status: 'online' };
-  } catch (error) {
-    const nodeError = withNode(nodeKey, error);
-    if (isOfflineError(nodeError)) {
-      return { node: nodeKey, status: 'offline' };
+    const response = await fetch(`${baseUrl}/api/internal/node-ping`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'X-Internal-Call': 'true'
+      },
+      signal: controller.signal
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.success) {
+      return { status: 'offline', timestamp: buildTimestamp() };
     }
-    return { node: nodeKey, status: 'error', message: nodeError.message };
+    return { status: 'online', timestamp: payload.timestamp ?? buildTimestamp() };
+  } catch {
+    return { status: 'offline', timestamp: buildTimestamp() };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-router.get('/node-status', authenticate, requireRole(['quantrivien']), async (req, res) => {
-  const results = await Promise.all(nodeKeys.map(checkNode));
-  return res.json({
-    success: true,
-    data: results
+router.get('/node-status', async (req, res) => {
+  const results = await Promise.allSettled(
+    nodeKeys.map(async nodeKey => ({ nodeKey, result: await pingNode(nodeKey) }))
+  );
+
+  const nodes = nodeKeys.reduce((acc, nodeKey) => {
+    acc[nodeKey] = { status: 'offline', timestamp: buildTimestamp() };
+    return acc;
+  }, {});
+
+  results.forEach(item => {
+    if (item.status === 'fulfilled') {
+      const { nodeKey, result } = item.value;
+      nodes[nodeKey] = result;
+    }
   });
+
+  return res.json({ success: true, nodes });
 });
 
 router.get('/tables', authenticate, requireRole(['nhanvien', 'quantrivien']), (req, res) => {
@@ -273,6 +314,11 @@ router.get('/meta/:table', authenticate, requireRole(['nhanvien', 'quantrivien']
     return res.status(400).json({ success: false, message: 'Mã cơ sở không hợp lệ.' });
   }
 
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
+  }
+
   try {
     const meta = await getTableMeta(nodeKey, table);
     return res.json({ success: true, data: meta });
@@ -290,6 +336,11 @@ router.get('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), as
   const nodeKey = resolveNodeKey(req);
   if (!nodeKey || !isValidNode(nodeKey)) {
     return res.status(400).json({ success: false, message: 'Mã cơ sở không hợp lệ.' });
+  }
+
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
   }
 
   const limitRaw = Number(req.query.limit ?? 200);
@@ -323,6 +374,11 @@ router.post('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), a
   const nodeKey = resolveNodeKey(req);
   if (!nodeKey || !isValidNode(nodeKey)) {
     return res.status(400).json({ success: false, message: 'Mã cơ sở không hợp lệ.' });
+  }
+
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
   }
 
   try {
@@ -372,6 +428,11 @@ router.put('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), as
   const nodeKey = resolveNodeKey(req);
   if (!nodeKey || !isValidNode(nodeKey)) {
     return res.status(400).json({ success: false, message: 'Mã cơ sở không hợp lệ.' });
+  }
+
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
   }
 
   try {
@@ -433,6 +494,11 @@ router.delete('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']),
     return res.status(400).json({ success: false, message: 'Mã cơ sở không hợp lệ.' });
   }
 
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
+  }
+
   try {
     const meta = await getTableMeta(nodeKey, table);
     const columnMap = new Map(meta.columns.map(col => [col.name, col]));
@@ -460,4 +526,3 @@ router.delete('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']),
 });
 
 export default router;
-

@@ -14,9 +14,10 @@ import lophocphanRoutes from './routes/lophocphan.js';
 import phonghocRoutes from './routes/phonghoc.js';
 import lichhocRoutes from './routes/lichhoc.js';
 import thoikhoabieuRoutes from './routes/thoikhoabieu.js';
+import internalRouter from './routes/internal.js';
 import { closePools } from './config/db.js';
-import { nodeKeys } from './config/nodes.js';
 import { getPool } from './config/db.js';
+import { LOCAL_NODE } from './config/nodes.js';
 
 dotenv.config();
 
@@ -42,27 +43,32 @@ app.use(express.json());
 
 // health endpoint: quick check of DB node connectivity
 app.get('/api/health', async (req, res) => {
-  const statuses = {};
-  await Promise.all(nodeKeys.map(async key => {
-    try {
-      const pool = await getPool(key);
-      // quick lightweight query
-      await pool.request().query('SELECT 1 AS ok');
-      statuses[key] = { ok: true, timestamp: new Date().toISOString() };
-    } catch (err) {
-      statuses[key] = {
-        ok: false,
-        message: err.message,
-        code: err.code,
-        timestamp: new Date().toISOString()
-      };
-      console.error(`[HEALTH] Node ${key} failed:`, err.code, err.message);
-    }
-  }));
-  res.json({ success: true, nodes: statuses });
+  try {
+    const pool = await getPool();
+    await pool.request().query('SELECT 1 AS ok');
+    res.json({
+      success: true,
+      nodes: {
+        [LOCAL_NODE ?? 'UNKNOWN']: { ok: true, timestamp: new Date().toISOString() }
+      }
+    });
+  } catch (err) {
+    res.json({
+      success: false,
+      nodes: {
+        [LOCAL_NODE ?? 'UNKNOWN']: {
+          ok: false,
+          message: err.message,
+          code: err.code,
+          timestamp: new Date().toISOString()
+        }
+      }
+    });
+  }
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/internal', internalRouter);
 app.use('/api/dangky', dangkyRoutes);
 app.use('/api/hocphan', hocphanRoutes);
 app.use('/api/nodes', nodesRoutes);

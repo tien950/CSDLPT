@@ -2,8 +2,9 @@ import express from 'express';
 import sql from 'mssql';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { getPool } from '../config/db.js';
-import { getNodes, isValidNode, normalizeNodeKey } from '../config/nodes.js';
+import { LOCAL_NODE, getNodes, isValidNode, normalizeNodeKey } from '../config/nodes.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
+import { callRemoteNode } from '../utils/remoteApi.js';
 
 const router = express.Router();
 const ID_TYPE = sql.NVarChar(50);
@@ -36,6 +37,17 @@ async function safeGetPool(nodeKey) {
 }
 
 async function fetchOverviewForNode(nodeKey) {
+  if (nodeKey !== LOCAL_NODE) {
+    const remote = await callRemoteNode(nodeKey, 'GET', '/api/internal/thongke/overview', null, null);
+    if (!remote.ok) {
+      const error = new Error(remote.data?.message ?? 'Không lấy được thống kê từ node.');
+      error.status = remote.status;
+      error.node = nodeKey;
+      throw error;
+    }
+    return remote.data?.data ?? {};
+  }
+
   const pool = await safeGetPool(nodeKey);
   const request = createRequest(nodeKey, null, pool);
   const result = await request.query(
@@ -67,6 +79,15 @@ async function fetchOverviewForNode(nodeKey) {
     cancelled: row.cancelled ?? 0
   };
 }
+
+router.get('/internal/overview', authenticate, async (req, res) => {
+  try {
+    const data = await fetchOverviewForNode(LOCAL_NODE);
+    return res.json({ success: true, data });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
 
 router.get('/overview', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
   const role = req.user?.role;

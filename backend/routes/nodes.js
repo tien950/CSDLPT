@@ -1,28 +1,25 @@
 import express from 'express';
-import { getPool } from '../config/db.js';
-import { nodeKeys } from '../config/nodes.js';
+import { LOCAL_NODE } from '../config/nodes.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
-import { createRequest, isOfflineError, withNode } from '../utils/db.js';
+import { callAllNodes } from '../utils/remoteApi.js';
 
 const router = express.Router();
 
-async function checkNode(nodeKey) {
-  try {
-    const pool = await getPool(nodeKey);
-    const request = createRequest(nodeKey, null, pool);
-    await request.query('SELECT 1 AS ok');
-    return { node: nodeKey, status: 'online' };
-  } catch (error) {
-    const nodeError = withNode(nodeKey, error);
-    if (isOfflineError(nodeError)) {
-      return { node: nodeKey, status: 'offline' };
-    }
-    return { node: nodeKey, status: 'error', message: nodeError.message };
-  }
-}
+router.get('/internal/node-ping', (req, res) => {
+  return res.json({ success: true, node: LOCAL_NODE, status: 'ok' });
+});
 
 router.get('/status', authenticate, requireRole(['quantrivien']), async (req, res) => {
-  const results = await Promise.all(nodeKeys.map(checkNode));
+  const localNode = LOCAL_NODE ?? 'UNKNOWN';
+  const remoteResults = await callAllNodes('GET', '/api/internal/node-ping', null, req.headers.authorization);
+  const results = [
+    { node: localNode, status: 'online' },
+    ...remoteResults.map(item => ({
+      node: item.node,
+      status: item.ok ? 'online' : 'offline',
+      message: item.data?.message ?? null
+    }))
+  ];
   return res.json({
     success: true,
     data: results

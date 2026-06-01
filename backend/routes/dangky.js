@@ -1,34 +1,29 @@
-import express from 'express';
+﻿import express from 'express';
 import sql from 'mssql';
 import { getPool } from '../config/db.js';
-import { isValidNode, normalizeNodeKey, getHeadquarterId, getNodes } from '../config/nodes.js';
+import { LOCAL_NODE, normalizeNodeKey, getHeadquarterId, isValidNode } from '../config/nodes.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 import { clearStudentCache } from '../utils/queryCache.js';
-
+import { callRemoteNode } from '../utils/remoteApi.js';
 const router = express.Router();
-
 const ID_TYPE = sql.NVarChar(50);
-
 function sendError(res, error) {
-  if (isOfflineError(error)) {
+  if (isOfflineError(error) || error.offline) {
     const node = error.node ?? 'UNKNOWN';
     return res.status(503).json({
       success: false,
-      message: `Node ${node} đang offline.`,
+      message: `Node ${node} hiện không khả dụng`,
       node,
-      status: 'offline'
+      offline: true
     });
   }
-
-  const status = error.status ?? 500;
-  const message = error.message ?? 'Có lỗi xảy ra.';
-  return res.status(status).json({
+  return res.status(error.status ?? 500).json({
     success: false,
-    message
+    message: error.message ?? 'Có lỗi xảy ra.',
+    node: error.node ?? LOCAL_NODE ?? 'UNKNOWN'
   });
 }
-
 async function safeGetPool(nodeKey) {
   try {
     return await getPool(nodeKey);
@@ -36,555 +31,318 @@ async function safeGetPool(nodeKey) {
     throw withNode(nodeKey, error);
   }
 }
-
-async function runOnNode(nodeKey, task) {
-  try {
-    return await task();
-  } catch (error) {
-    throw withNode(nodeKey, error);
-  }
-}
-
-// Generate next registration ID
 async function generateRegId(pool, nodeKey) {
-   const request = createRequest(nodeKey, null, pool);
-      // Use TRY_CAST to avoid errors when ID_registration contains non-numeric suffixes
-      // (e.g. values created by sync processes). Also ensure we only consider IDs
-      // that start with 'REG' and have a digit at the 4th position.
-      const result = await request.query(
-        `SELECT ISNULL(MAX(TRY_CAST(SUBSTRING(ID_registration, 4, 10) AS INT)), 0) + 1 AS nextNum
-         FROM registration
-         WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS LIKE 'REG[0-9]%'
-           OR (ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS LIKE 'REG%'
-               AND TRY_CAST(SUBSTRING(ID_registration, 4, 10) AS INT) IS NOT NULL)`
-      );
-   const nextNum = result.recordset[0]?.nextNum || 1;
-   return 'REG' + String(nextNum).padStart(6, '0');
- }
-
+  const request = createRequest(nodeKey, null, pool);
+  const result = await request.query(
+    `SELECT ISNULL(MAX(TRY_CAST(SUBSTRING(ID_registration, 4, 10) AS INT)), 0) + 1 AS nextNum
+     FROM registration
+     WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS LIKE 'REG[0-9]%'
+        OR (ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS LIKE 'REG%'
+            AND TRY_CAST(SUBSTRING(ID_registration, 4, 10) AS INT) IS NOT NULL)`
+  );
+  return 'REG' + String(result.recordset[0]?.nextNum ?? 1).padStart(6, '0');
+}
 async function fetchStudentHeadquarterId(nodeKey, studentId) {
+  try {
     const pool = await safeGetPool(nodeKey);
     const request = createRequest(nodeKey, null, pool);
     request.input('studentId', ID_TYPE, studentId);
-    try {
-      const result = await request.query(
-        `SELECT h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS AS headquarterId
-         FROM student s
-         JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
-         JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
-         WHERE s.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @studentId COLLATE SQL_Latin1_General_CP1_CI_AS`
-      );
-      return result.recordset[0]?.headquarterId ?? null;
-    } catch (error) {
-      throw withNode(nodeKey, error);
-    }
+    const result = await request.query(
+      `SELECT h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS AS headquarterId
+       FROM student s
+       JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+       WHERE s.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @studentId COLLATE SQL_Latin1_General_CP1_CI_AS`
+    );
+    return result.recordset[0]?.headquarterId ?? null;
+  } catch (error) {
+    console.warn(`[DB] fetchStudentHeadquarterId failed for ${nodeKey}: ${error.message}`);
+    return null;
   }
-
-  async function fetchClassHeadquarterId(nodeKey, classId) {
-    const pool = await safeGetPool(nodeKey);
-    const request = createRequest(nodeKey, null, pool);
-    request.input('classId', ID_TYPE, classId);
-    try {
-      const result = await request.query(
-        `SELECT h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS AS headquarterId
-         FROM class c
-         JOIN teacher t ON t.ID_teacher = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-         JOIN department d ON d.ID_department = t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
-         JOIN headquarter h ON h.ID_headquarter = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
-         WHERE c.ID_class = @classId COLLATE SQL_Latin1_General_CP1_CI_AS`
-      );
-      return result.recordset[0]?.headquarterId ?? null;
-    } catch (error) {
-      throw withNode(nodeKey, error);
-    }
-  }
-
+}
 async function fetchAvailableClasses(nodeKey, termId) {
-   const pool = await safeGetPool(nodeKey);
-   const request = createRequest(nodeKey, null, pool);
-   if (termId) {
-     request.input('termId', ID_TYPE, termId);
-   }
-
-   const termFilter = termId
-     ? 'AND c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = @termId COLLATE SQL_Latin1_General_CP1_CI_AS'
-     : '';
-
-   try {
-     const result = await request.query(
-       `SELECT
-          c.ID_class AS ID_class,
-          c.group_number AS group_number,
-          c.max_students AS max_students,
-          c.number_of_registration AS number_of_registration,
-          (c.max_students - c.number_of_registration) AS remaining,
-          c.class_status AS class_status,
-          c.ID_term AS ID_term,
-          s.ID_subject AS ID_subject,
-          s.name_subject AS name_subject,
-          s.number_of_credit AS number_of_credit,
-          t.ID_teacher AS ID_teacher,
-          t.name_teacher AS name_teacher,
-          h.ID_headquarter AS ID_headquarter
-        FROM [class] c
-        JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
-        JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-        JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
-        JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
-        WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
-          AND c.max_students > c.number_of_registration
-          ${termFilter}
-        ORDER BY c.ID_class`
-     );
-     return result.recordset;
-   } catch (error) {
-     throw withNode(nodeKey, error);
-   }
- }
-
-router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const { maLop, maCSLop } = req.body ?? {};
-  const maSV = req.user?.id;
-  const maCS = normalizeNodeKey(req.user?.maCS);
-  const maCSLopNormalized = normalizeNodeKey(maCSLop);
-
-  const headquarterStudent = (await fetchStudentHeadquarterId(maCS, maSV))
-    ?? getHeadquarterId(maCS)
-    ?? maCS;
-  const headquarterClass = (await fetchClassHeadquarterId(maCSLopNormalized, maLop))
-    ?? getHeadquarterId(maCSLopNormalized)
-    ?? maCSLopNormalized;
-
-  if (!maSV || !maCS) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu thông tin sinh viên trong token.'
-    });
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  if (termId) request.input('termId', ID_TYPE, termId);
+  const termFilter = termId ? 'AND c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = @termId COLLATE SQL_Latin1_General_CP1_CI_AS' : '';
+  const result = await request.query(
+    `SELECT
+       c.ID_class AS ID_class,
+       c.group_number AS group_number,
+       c.max_students AS max_students,
+       c.number_of_registration AS number_of_registration,
+       (c.max_students - c.number_of_registration) AS remaining,
+       c.class_status AS class_status,
+       c.ID_term AS ID_term,
+       s.ID_subject AS ID_subject,
+       s.name_subject AS name_subject,
+       s.number_of_credit AS number_of_credit,
+       t.ID_teacher AS ID_teacher,
+       t.name_teacher AS name_teacher,
+       h.ID_headquarter AS ID_headquarter
+     FROM [class] c
+     JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+     WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
+       AND c.max_students > c.number_of_registration
+       ${termFilter}
+     ORDER BY c.ID_class`
+  );
+  return result.recordset;
+}
+async function getClassById(nodeKey, classId) {
+  if (normalizeNodeKey(nodeKey) !== normalizeNodeKey(LOCAL_NODE)) {
+    const remote = await callRemoteNode(nodeKey, 'GET', `/api/internal/lophocphan/${encodeURIComponent(classId)}`, null, null);
+    if (!remote.ok) {
+      const error = new Error(remote.data?.message ?? 'Không lấy được thông tin lớp học phần.');
+      error.status = remote.status;
+      error.node = nodeKey;
+      throw error;
+    }
+    return remote.data?.data ?? null;
   }
-
-  if (!maLop || !maCSLop) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu mã lớp hoặc mã cơ sở lớp học phần.'
-    });
-  }
-
-  if (!isValidNode(maCS) || !isValidNode(maCSLopNormalized)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Mã cơ sở không hợp lệ.'
-    });
-  }
-
-   // Same campus registration
-   if (maCS === maCSLopNormalized) {
-     try {
-       const pool = await safeGetPool(maCS);
-
-       // 1. Check conditions using stored procedure
-       const checkRequest = createRequest(maCS, null, pool);
-       checkRequest.input('ID_student', ID_TYPE, maSV);
-       checkRequest.input('ID_class', ID_TYPE, maLop);
-       checkRequest.input('ID_headquarter', ID_TYPE, headquarterStudent);
-
-       let checkResult;
-       try {
-         checkResult = await checkRequest.execute('usp_CheckRegisterCondition');
-       } catch (error) {
-         throw withNode(maCS, error);
-       }
-       const isValid = checkResult.recordset[0]?.is_valid;
-       const message = checkResult.recordset[0]?.message;
-
-       if (!isValid) {
-         return res.status(400).json({
-           success: false,
-           message: message || 'Không thể đăng ký lớp này.'
-         });
-       }
-
-       // 2. Generate registration ID
-       const regId = await generateRegId(pool, maCS);
-
-       // 3. Register using stored procedure
-       const regRequest = createRequest(maCS, null, pool);
-       regRequest.input('ID_registration', ID_TYPE, regId);
-       regRequest.input('ID_student', ID_TYPE, maSV);
-       regRequest.input('ID_class', ID_TYPE, maLop);
-       regRequest.input('ID_headquarter', ID_TYPE, headquarterStudent);
-
-        try {
-          await regRequest.execute('usp_RegisterClass');
-        } catch (error) {
-          throw withNode(maCS, error);
-        }
-
-        // Clear cache for this student
-        clearStudentCache(maSV, maCS);
-
-        return res.json({
-          success: true,
-          data: {
-            maDangKy: regId,
-            maSV,
-            maLop,
-            maCS
-          }
-        });
-     } catch (error) {
-       return sendError(res, error);
-     }
-   }
-
-   // Cross-campus registration (2PC pattern)
-   let transactionStudent;
-   let transactionClass;
-   try {
-     const poolStudent = await safeGetPool(maCS);
-     const poolClass = await safeGetPool(maCSLopNormalized);
-
-     // 1. Check conditions on both nodes
-     const checkStudentReq = createRequest(maCS, null, poolStudent);
-     checkStudentReq.input('ID_student', ID_TYPE, maSV);
-     checkStudentReq.input('ID_class', ID_TYPE, maLop);
-     checkStudentReq.input('ID_headquarter', ID_TYPE, headquarterStudent);
-     let checkStudentResult;
-     try {
-       checkStudentResult = await checkStudentReq.execute('usp_CheckRegisterCondition');
-     } catch (error) {
-       throw withNode(maCS, error);
-     }
-
-     const checkClassReq = createRequest(maCSLopNormalized, null, poolClass);
-     checkClassReq.input('ID_student', ID_TYPE, maSV);
-     checkClassReq.input('ID_class', ID_TYPE, maLop);
-     checkClassReq.input('ID_headquarter', ID_TYPE, headquarterClass);
-     let checkClassResult;
-     try {
-       checkClassResult = await checkClassReq.execute('usp_CheckRegisterCondition');
-     } catch (error) {
-       throw withNode(maCSLopNormalized, error);
-     }
-
-     if (!checkStudentResult.recordset[0]?.is_valid) {
-       return res.status(400).json({
-         success: false,
-         message: checkStudentResult.recordset[0]?.message || 'Không thể đăng ký lớp này.'
-       });
-     }
-
-     if (!checkClassResult.recordset[0]?.is_valid) {
-       return res.status(400).json({
-         success: false,
-         message: checkClassResult.recordset[0]?.message || 'Không thể đăng ký lớp này.'
-       });
-     }
-
-     // 2. Generate registration ID (on student's node)
-     const regId = await generateRegId(poolStudent, maCS);
-
-     // 3. Begin transactions
-     transactionStudent = new sql.Transaction(poolStudent);
-     transactionClass = new sql.Transaction(poolClass);
-
-     await transactionStudent.begin();
-     await transactionClass.begin();
-
-     // 4. Register on student's node
-     const regStudentReq = createRequest(maCS, transactionStudent);
-     regStudentReq.input('ID_registration', ID_TYPE, regId);
-     regStudentReq.input('ID_student', ID_TYPE, maSV);
-     regStudentReq.input('ID_class', ID_TYPE, maLop);
-     regStudentReq.input('ID_headquarter', ID_TYPE, headquarterStudent);
-     try {
-       await regStudentReq.execute('usp_RegisterClass');
-     } catch (error) {
-       throw withNode(maCS, error);
-     }
-
-      // 5. Increment on class's node
-      const updateClassReq = createRequest(maCSLopNormalized, transactionClass);
-      updateClassReq.input('ID_class', ID_TYPE, maLop);
-      try {
-        await updateClassReq.query(
-          `UPDATE [class]
-           SET number_of_registration = number_of_registration + 1
-           WHERE ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_class COLLATE SQL_Latin1_General_CP1_CI_AS`
-        );
-      } catch (error) {
-        throw withNode(maCSLopNormalized, error);
-      }
-
-      await transactionStudent.commit();
-      try {
-        await transactionClass.commit();
-      } catch (error) {
-        // Rollback student transaction if class update fails
-        await runOnNode(maCS, async () => {
-          const pool = await safeGetPool(maCS);
-         const deleteReq = createRequest(maCS, null, pool);
-           deleteReq.input('ID_registration', ID_TYPE, regId);
-           await deleteReq.query(
-             `DELETE FROM registration WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS`
-           );
-        }).catch(() => undefined);
-        throw withNode(maCSLopNormalized, error);
-      }
-
-      // Clear cache for this student
-      clearStudentCache(maSV, maCS);
-
-      return res.json({
-        success: true,
-        data: {
-          maDangKy: regId,
-          maSV,
-          maLop,
-          maCS,
-          maCSLop: maCSLopNormalized
-        }
-      });
-   } catch (error) {
-     if (transactionStudent) {
-       await transactionStudent.rollback().catch(() => undefined);
-     }
-     if (transactionClass) {
-       await transactionClass.rollback().catch(() => undefined);
-     }
-     return sendError(res, error);
-   }
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  request.input('classId', ID_TYPE, classId);
+  const result = await request.query(
+    `SELECT
+       c.ID_class AS ID_class,
+       c.group_number AS group_number,
+       c.max_students AS max_students,
+       c.number_of_registration AS number_of_registration,
+       c.class_status AS class_status,
+       c.ID_term AS ID_term,
+       h.ID_headquarter AS ID_headquarter
+     FROM [class] c
+     JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+     WHERE c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @classId COLLATE SQL_Latin1_General_CP1_CI_AS`
+  );
+  return result.recordset[0] ?? null;
+}
+async function registerLocal(nodeKey, regId, studentId, classId, headquarterStudent) {
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  request.input('ID_registration', ID_TYPE, regId);
+  request.input('ID_student', ID_TYPE, studentId);
+  request.input('ID_class', ID_TYPE, classId);
+  request.input('ID_headquarter', ID_TYPE, headquarterStudent);
+  await request.execute('usp_RegisterClass');
+}
+async function deleteLocalRegistration(nodeKey, regId) {
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  request.input('ID_registration', ID_TYPE, regId);
+  await request.query(
+    `DELETE FROM registration
+     WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS`
+  );
+}
+async function updateLocalEnrollment(nodeKey, classId, delta) {
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  request.input('ID_class', ID_TYPE, classId);
+  const updateSql = delta > 0
+    ? `UPDATE [class] SET number_of_registration = number_of_registration + 1
+       WHERE ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_class COLLATE SQL_Latin1_General_CP1_CI_AS`
+    : `UPDATE [class] SET number_of_registration = CASE WHEN number_of_registration > 0 THEN number_of_registration - 1 ELSE 0 END
+       WHERE ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_class COLLATE SQL_Latin1_General_CP1_CI_AS`;
+  await request.query(updateSql);
+}
+router.get('/internal/node-ping', (req, res) => {
+  return res.json({ success: true, node: LOCAL_NODE, status: 'ok' });
 });
-
-router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const { maDangKy } = req.body ?? {};
-  const maSV = req.user?.id;
-  const maCS = normalizeNodeKey(req.user?.maCS);
-
-  const headquarterId = (await fetchStudentHeadquarterId(maCS, maSV))
-    ?? getHeadquarterId(maCS)
-    ?? maCS;
-
-  if (!maSV || !maCS) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu thông tin sinh viên.'
-    });
-  }
-
-  if (!maDangKy) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu mã đăng ký.'
-    });
-  }
-
-   try {
-     const pool = await safeGetPool(maCS);
-
-     // 1. Verify registration belongs to student
-     const verifyReq = createRequest(maCS, null, pool);
-     verifyReq.input('ID_registration', ID_TYPE, maDangKy);
-     verifyReq.input('ID_student', ID_TYPE, maSV);
-     let verifyResult;
-     try {
-       verifyResult = await verifyReq.query(
-         `SELECT ID_class, registration_status FROM registration 
-          WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS 
-            AND ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
-       );
-     } catch (error) {
-       throw withNode(maCS, error);
-     }
-
-     if (verifyResult.recordset.length === 0) {
-       return res.status(404).json({
-         success: false,
-         message: 'Không tìm thấy đăng ký.'
-       });
-     }
-
-     const regStatus = verifyResult.recordset[0].registration_status;
-     if (regStatus === 'CANCELLED') {
-       return res.status(400).json({
-         success: false,
-         message: 'Đăng ký này đã bị hủy rồi.'
-       });
-     }
-
-      // 2. Cancel registration using stored procedure
-      const cancelReq = createRequest(maCS, null, pool);
-      cancelReq.input('ID_registration', ID_TYPE, maDangKy);
-      cancelReq.input('ID_headquarter', ID_TYPE, headquarterId);
-
-      try {
-        await cancelReq.execute('usp_CancelRegistration');
-      } catch (error) {
-        throw withNode(maCS, error);
-      }
-
-      // Clear cache for this student
-      clearStudentCache(maSV, maCS);
-
-      return res.json({
-        success: true,
-        message: 'Hủy đăng ký thành công.'
-      });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  router.delete('/:maDangKy', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const maDangKy = req.params.maDangKy;
-  const maSV = req.user?.id;
-  const maCS = normalizeNodeKey(req.user?.maCS);
-  const headquarterId = normalizeNodeKey(req.body?.ID_headquarter_sv ?? req.query.ID_headquarter_sv)
-    ?? (await fetchStudentHeadquarterId(maCS, maSV))
-    ?? getHeadquarterId(maCS)
-    ?? maCS;
-
-  if (!maSV || !maCS) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu thông tin sinh viên.'
-    });
-  }
-
-  if (!maDangKy) {
-    return res.status(400).json({
-      success: false,
-      message: 'Thiếu mã đăng ký.'
-    });
-  }
-
-   try {
-     const pool = await safeGetPool(maCS);
-
-     const verifyReq = createRequest(maCS, null, pool);
-     verifyReq.input('ID_registration', ID_TYPE, maDangKy);
-     verifyReq.input('ID_student', ID_TYPE, maSV);
-     let verifyResult;
-     try {
-       verifyResult = await verifyReq.query(
-         `SELECT ID_class, registration_status FROM registration 
-          WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS 
-            AND ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
-       );
-     } catch (error) {
-       throw withNode(maCS, error);
-     }
-
-     if (verifyResult.recordset.length === 0) {
-       return res.status(404).json({
-         success: false,
-         message: 'Không tìm thấy đăng ký.'
-       });
-     }
-
-     const regStatus = verifyResult.recordset[0].registration_status;
-     if (regStatus === 'CANCELLED') {
-       return res.status(400).json({
-         success: false,
-         message: 'Đăng ký này đã bị hủy rồi.'
-       });
-     }
-
-      const cancelReq = createRequest(maCS, null, pool);
-      cancelReq.input('ID_registration', ID_TYPE, maDangKy);
-      cancelReq.input('ID_headquarter', ID_TYPE, headquarterId);
-      try {
-        await cancelReq.execute('usp_CancelRegistration');
-      } catch (error) {
-        throw withNode(maCS, error);
-      }
-
-      // Clear cache for this student
-      clearStudentCache(maSV, maCS);
-
-      return res.json({
-        success: true,
-        message: 'Hủy đăng ký thành công.'
-      });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  router.get('/available', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const termId = req.query.ID_term ?? null;
+router.get('/internal/lophocphan', authenticate, async (req, res) => {
   try {
-    const nodes = getNodes();
-    const results = [];
-    const offlineNodes = [];
-
-    await Promise.all(Object.keys(nodes).map(async nodeKey => {
-      try {
-        const rows = await fetchAvailableClasses(nodeKey, termId);
-        rows.forEach(row => {
-          results.push({
-            ...row,
-            node: nodeKey
-          });
-        });
-      } catch (error) {
-        const nodeError = withNode(nodeKey, error);
-        if (isOfflineError(nodeError)) {
-          offlineNodes.push(nodeKey);
-          return;
-        }
-        throw nodeError;
-      }
-    }));
-
-    return res.json({
-      success: true,
-      data: results,
-      meta: {
-        offlineNodes
-      }
-    });
+    const data = await fetchAvailableClasses(LOCAL_NODE, req.query.ID_term ?? null);
+    return res.json({ success: true, data });
   } catch (error) {
     return sendError(res, error);
   }
 });
-
+router.get('/internal/lophocphan/:id', authenticate, async (req, res) => {
+  try {
+    const data = await getClassById(LOCAL_NODE, req.params.id);
+    if (!data) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy lớp học phần.' });
+    }
+    return res.json({ success: true, data });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+router.put('/internal/lophocphan/:id/enrollment', authenticate, async (req, res) => {
+  try {
+    await updateLocalEnrollment(LOCAL_NODE, req.params.id, 1);
+    return res.json({ success: true });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+router.post('/internal/dangky', authenticate, async (req, res) => {
+  const { ID_registration, ID_student, ID_class, ID_headquarter } = req.body ?? {};
+  if (!ID_registration || !ID_student || !ID_class) {
+    return res.status(400).json({ success: false, message: 'Thiếu thông tin đăng ký.' });
+  }
+  try {
+    await registerLocal(LOCAL_NODE, ID_registration, ID_student, ID_class, ID_headquarter ?? LOCAL_NODE);
+    return res.json({ success: true });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+router.delete('/internal/dangky/:id', authenticate, async (req, res) => {
+  try {
+    await deleteLocalRegistration(LOCAL_NODE, req.params.id);
+    return res.json({ success: true });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  const { maLop, maCSLop } = req.body ?? {};
+  const maSV = req.user?.id;
+  const maCS = normalizeNodeKey(req.user?.maCS) ?? LOCAL_NODE;
+  const maCSLopNormalized = normalizeNodeKey(maCSLop);
+  if (!maSV || !maCS || !maLop || !maCSLopNormalized) {
+    return res.status(400).json({ success: false, message: 'Thiếu thông tin đăng ký.' });
+  }
+  if (!isValidNode(maCS) || !isValidNode(maCSLopNormalized)) {
+    return res.status(400).json({ success: false, message: 'Mã cơ sở không hợp lệ.' });
+  }
+  const headquarterStudent = (await fetchStudentHeadquarterId(LOCAL_NODE, maSV)) ?? getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE;
+  const classInfo = await getClassById(maCSLopNormalized, maLop);
+  let regId = null;
+  if (!classInfo || classInfo.class_status !== 'OPEN' || classInfo.number_of_registration >= classInfo.max_students) {
+    return res.status(400).json({
+      success: false,
+      message: 'Lớp học phần đã đủ sĩ số, không mở đăng ký hoặc không thuộc cơ sở được chọn.'
+    });
+  }
+  if (maCS === maCSLopNormalized) {
+    try {
+      const pool = await safeGetPool(LOCAL_NODE);
+      const checkRequest = createRequest(LOCAL_NODE, null, pool);
+      checkRequest.input('ID_student', ID_TYPE, maSV);
+      checkRequest.input('ID_class', ID_TYPE, maLop);
+      checkRequest.input('ID_headquarter', ID_TYPE, headquarterStudent);
+      const checkResult = await checkRequest.execute('usp_CheckRegisterCondition');
+      if (!checkResult.recordset[0]?.is_valid) {
+        return res.status(400).json({ success: false, message: checkResult.recordset[0]?.message || 'Không thể đăng ký lớp này.' });
+      }
+      regId = await generateRegId(pool, LOCAL_NODE);
+      await registerLocal(LOCAL_NODE, regId, maSV, maLop, headquarterStudent);
+      clearStudentCache(maSV, LOCAL_NODE);
+      return res.json({ success: true, data: { maDangKy: regId, maSV, maLop, maCS: LOCAL_NODE, maCSLop: maCSLopNormalized } });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  }
+  console.log('[2PC] Phase 1: PREPARE', LOCAL_NODE, '->', maCSLopNormalized);
+  try {
+    const pool = await safeGetPool(LOCAL_NODE);
+    const checkRequest = createRequest(LOCAL_NODE, null, pool);
+    checkRequest.input('ID_student', ID_TYPE, maSV);
+    checkRequest.input('ID_class', ID_TYPE, maLop);
+    checkRequest.input('ID_headquarter', ID_TYPE, headquarterStudent);
+    const checkResult = await checkRequest.execute('usp_CheckRegisterCondition');
+    if (!checkResult.recordset[0]?.is_valid) {
+      return res.status(400).json({ success: false, message: checkResult.recordset[0]?.message || 'Không thể đăng ký lớp này.' });
+    }
+    regId = await generateRegId(pool, LOCAL_NODE);
+    await registerLocal(LOCAL_NODE, regId, maSV, maLop, headquarterStudent);
+    console.log('[2PC] Phase 2: COMMIT', LOCAL_NODE, '->', maCSLopNormalized);
+    const remoteUpdate = await callRemoteNode(maCSLopNormalized, 'PUT', `/api/internal/lophocphan/${encodeURIComponent(maLop)}/enrollment`, null, req.headers.authorization);
+    if (!remoteUpdate.ok) {
+      throw new Error(remoteUpdate.data?.message || 'Không thể cập nhật sĩ số lớp học phần.');
+    }
+    clearStudentCache(maSV, LOCAL_NODE);
+    return res.json({ success: true, data: { maDangKy: regId, maSV, maLop, maCS: LOCAL_NODE, maCSLop: maCSLopNormalized } });
+  } catch (error) {
+    console.log('[2PC] ROLLBACK — reason:', error.message);
+    if (regId) {
+      await deleteLocalRegistration(LOCAL_NODE, regId).catch(() => undefined);
+    }
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Không thể hoàn tất đăng ký lớp học phần.',
+      node: maCSLopNormalized,
+      offline: Boolean(error.offline)
+    });
+  }
+});
+router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  const { maDangKy } = req.body ?? {};
+  const maSV = req.user?.id;
+  const maCS = normalizeNodeKey(req.user?.maCS) ?? LOCAL_NODE;
+  if (!maSV || !maCS || !maDangKy) {
+    return res.status(400).json({ success: false, message: 'Thiếu thông tin hủy đăng ký.' });
+  }
+  try {
+    const pool = await safeGetPool(LOCAL_NODE);
+    const verifyReq = createRequest(LOCAL_NODE, null, pool);
+    verifyReq.input('ID_registration', ID_TYPE, maDangKy);
+    verifyReq.input('ID_student', ID_TYPE, maSV);
+    const verifyResult = await verifyReq.query(
+      `SELECT ID_class, registration_status FROM registration
+       WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS
+         AND ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
+    );
+    if (verifyResult.recordset.length === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy đăng ký.' });
+    }
+    if (verifyResult.recordset[0].registration_status === 'CANCELLED') {
+      return res.status(400).json({ success: false, message: 'Đăng ký này đã bị hủy rồi.' });
+    }
+    const cancelReq = createRequest(LOCAL_NODE, null, pool);
+    cancelReq.input('ID_registration', ID_TYPE, maDangKy);
+    cancelReq.input('ID_headquarter', ID_TYPE, getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE);
+    await cancelReq.execute('usp_CancelRegistration');
+    clearStudentCache(maSV, LOCAL_NODE);
+    return res.json({ success: true, message: 'Hủy đăng ký thành công.' });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+router.delete('/:maDangKy', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  try {
+    await deleteLocalRegistration(LOCAL_NODE, req.params.maDangKy);
+    return res.json({ success: true, message: 'Hủy đăng ký thành công.' });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+router.get('/available', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  const termId = req.query.ID_term ?? null;
+  try {
+    const data = await fetchAvailableClasses(LOCAL_NODE, termId);
+    return res.json({ success: true, data, meta: { offlineNodes: [] } });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
 router.get('/result', authenticate, requireRole(['sinhvien', 'nhanvien', 'quantrivien']), async (req, res) => {
   const role = req.user?.role;
   let studentId = req.query.ID_student;
-  let headquarterId = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS ?? req.user?.maCS);
-
+  const headquarterId = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS ?? req.user?.maCS) ?? LOCAL_NODE;
   if (role === 'sinhvien') {
     studentId = req.user?.id;
-    headquarterId = normalizeNodeKey(req.user?.maCS);
   }
-
   if (!studentId || !headquarterId) {
     return res.status(400).json({ success: false, message: 'Thiếu thông tin sinh viên hoặc cơ sở.' });
   }
-
-  if (!isValidNode(headquarterId)) {
-    return res.status(400).json({ success: false, message: 'Mã cơ sở không hợp lệ.' });
+  try {
+    const pool = await safeGetPool(LOCAL_NODE);
+    const request = createRequest(LOCAL_NODE, null, pool);
+    request.input('ID_student', ID_TYPE, studentId);
+    request.input('ID_headquarter', ID_TYPE, headquarterId);
+    const result = await request.execute('usp_GetRegistrationResult');
+    return res.json({ success: true, data: result.recordset });
+  } catch (error) {
+    return sendError(res, error);
   }
-
-   try {
-     const pool = await safeGetPool(headquarterId);
-     const request = createRequest(headquarterId, null, pool);
-     request.input('ID_student', ID_TYPE, studentId);
-     request.input('ID_headquarter', ID_TYPE, headquarterId);
-     let result;
-     try {
-       result = await request.execute('usp_GetRegistrationResult');
-     } catch (error) {
-       throw withNode(headquarterId, error);
-     }
-
-     return res.json({
-       success: true,
-       data: result.recordset
-     });
-   } catch (error) {
-     return sendError(res, error);
-   }
 });
-
 export default router;

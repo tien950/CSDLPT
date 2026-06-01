@@ -1,6 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { findDemoUser } from '../config/demo-users.js';
+import { LOCAL_NODE } from '../config/nodes.js';
 
 const router = express.Router();
 
@@ -38,7 +39,8 @@ router.post('/login', (req, res) => {
       role: user.role,
       maCS: user.maCS,
       ID_headquarter: user.maCS,
-      ID_user: user.id
+      ID_user: user.id,
+      LOCAL_NODE
     },
     JWT_SECRET,
     { expiresIn: TOKEN_EXPIRES_IN }

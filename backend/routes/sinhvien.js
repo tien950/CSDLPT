@@ -2,10 +2,11 @@ import express from 'express';
 import sql from 'mssql';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { getPool } from '../config/db.js';
-import { normalizeNodeKey, getHeadquarterId, isValidNode } from '../config/nodes.js';
+import { LOCAL_NODE, normalizeNodeKey, getHeadquarterId, isValidNode } from '../config/nodes.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 import { deleteRow, insertRow, queryRows, updateRow } from '../utils/tableCrud.js';
 import { getCachedResult, setCachedResult } from '../utils/queryCache.js';
+import { callRemoteNode } from '../utils/remoteApi.js';
 
 const router = express.Router();
 const ID_TYPE = sql.NVarChar(50);
@@ -40,17 +41,22 @@ async function safeGetPool(nodeKey) {
 }
 
 async function fetchStudentHeadquarterId(nodeKey, studentId) {
-  const pool = await safeGetPool(nodeKey);
-  const request = createRequest(nodeKey, null, pool);
-  request.input('studentId', ID_TYPE, studentId);
-  const result = await request.query(
-    `SELECT h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS AS headquarterId
-     FROM student s
-     JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
-     WHERE s.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @studentId COLLATE SQL_Latin1_General_CP1_CI_AS`
-  );
-  return result.recordset[0]?.headquarterId ?? null;
+  try {
+    const pool = await safeGetPool(nodeKey);
+    const request = createRequest(nodeKey, null, pool);
+    request.input('studentId', ID_TYPE, studentId);
+    const result = await request.query(
+      `SELECT h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS AS headquarterId
+       FROM student s
+       JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+       WHERE s.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @studentId COLLATE SQL_Latin1_General_CP1_CI_AS`
+    );
+    return result.recordset[0]?.headquarterId ?? null;
+  } catch (error) {
+    console.warn(`[DB] fetchStudentHeadquarterId failed for ${nodeKey}: ${error.message}`);
+    return null;
+  }
 }
 
 function resolveNode(req) {
@@ -62,10 +68,20 @@ function resolveNode(req) {
   return userNode;
 }
 
+async function proxyIfRemote(req, nodeKey) {
+  if (!nodeKey || nodeKey === LOCAL_NODE) return null;
+  return await callRemoteNode(nodeKey, req.method, req.originalUrl, req.body ?? null, req.headers.authorization);
+}
+
 router.get('/', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
   const nodeKey = resolveNode(req);
   if (!nodeKey) {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
+  }
+
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
   }
 
   try {
@@ -82,6 +98,11 @@ router.post('/', authenticate, requireRole(['nhanvien', 'quantrivien']), async (
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
   }
 
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
+  }
+
   try {
     await insertRow(nodeKey, 'student', req.body ?? {});
     return res.json({ success: true });
@@ -96,6 +117,11 @@ router.put('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), async
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
   }
 
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
+  }
+
   try {
     await updateRow(nodeKey, 'student', req.body ?? {}, { ID_student: req.params.id });
     return res.json({ success: true });
@@ -108,6 +134,11 @@ router.delete('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), as
   const nodeKey = resolveNode(req);
   if (!nodeKey) {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
+  }
+
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
   }
 
   try {

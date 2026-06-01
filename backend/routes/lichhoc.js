@@ -1,8 +1,9 @@
 import express from 'express';
 import { authenticate, requireRole } from '../middleware/auth.js';
-import { isValidNode, normalizeNodeKey } from '../config/nodes.js';
+import { LOCAL_NODE, isValidNode, normalizeNodeKey } from '../config/nodes.js';
 import { isOfflineError } from '../utils/db.js';
 import { deleteRow, insertRow, queryRows, updateRow } from '../utils/tableCrud.js';
+import { callRemoteNode } from '../utils/remoteApi.js';
 
 const router = express.Router();
 const TABLE = 'session';
@@ -33,12 +34,22 @@ function resolveNode(req) {
   return userNode;
 }
 
+async function proxyIfRemote(req, nodeKey) {
+  if (!nodeKey || nodeKey === LOCAL_NODE) return null;
+  return await callRemoteNode(nodeKey, req.method, req.originalUrl, req.body ?? null, req.headers.authorization);
+}
+
 router.use(authenticate, requireRole(['nhanvien', 'quantrivien']));
 
 router.get('/:id_class', async (req, res) => {
   const nodeKey = resolveNode(req);
   if (!nodeKey) {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
+  }
+
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
   }
 
   try {
@@ -55,6 +66,11 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
   }
 
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
+  }
+
   try {
     await insertRow(nodeKey, TABLE, req.body ?? {});
     return res.json({ success: true });
@@ -69,6 +85,11 @@ router.put('/:id', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
   }
 
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
+  }
+
   try {
     await updateRow(nodeKey, TABLE, req.body ?? {}, { [ID_FIELD]: req.params.id });
     return res.json({ success: true });
@@ -81,6 +102,11 @@ router.delete('/:id', async (req, res) => {
   const nodeKey = resolveNode(req);
   if (!nodeKey) {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
+  }
+
+  const proxyResult = await proxyIfRemote(req, nodeKey);
+  if (proxyResult) {
+    return res.status(proxyResult.status).json(proxyResult.data);
   }
 
   try {

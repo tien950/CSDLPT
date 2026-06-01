@@ -1,4 +1,5 @@
 import sql from 'mssql';
+import { LOCAL_NODE } from '../config/nodes.js';
 
 const OFFLINE_CODES = new Set([
   'ETIMEOUT',
@@ -20,6 +21,7 @@ export function isOfflineError(error) {
 }
 
 export function createRequest(nodeKey, transaction, pool) {
+  console.log('[DB] Querying local node', LOCAL_NODE ?? nodeKey ?? 'UNKNOWN');
   if (transaction) {
     return new sql.Request(transaction);
   }

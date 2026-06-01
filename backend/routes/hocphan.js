@@ -1,10 +1,11 @@
 import express from 'express';
 import sql from 'mssql';
 import { authenticate, requireRole } from '../middleware/auth.js';
-import { getPool } from '../config/db.js';
-import { getNodeApiBase, isValidNode, normalizeNodeKey } from '../config/nodes.js';
+import { getPool, hasNodeCredentials } from '../config/db.js';
+import { LOCAL_NODE, getNodeApiBase, isValidNode, normalizeNodeKey, getNodes } from '../config/nodes.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 import { deleteRow, insertRow, queryRows, updateRow } from '../utils/tableCrud.js';
+import { callRemoteNode } from '../utils/remoteApi.js';
 import { fetchNodeApiJson, getProxyHeaders, isProxyRequest } from '../utils/nodeProxy.js';
 
 const router = express.Router();
@@ -44,10 +45,14 @@ function setCachedResult(nodeKey, queryName, data) {
 
 function canProxyToNode(req, nodeKey) {
   if (!nodeKey || isProxyRequest(req)) return false;
-  if (!getNodeApiBase(nodeKey)) return false;
   const userNode = normalizeNodeKey(req.user?.maCS);
-  if (userNode && userNode === nodeKey) return false;
-  return true;
+  return Boolean(getNodeApiBase(nodeKey)) && (!userNode || userNode !== nodeKey);
+}
+
+function shouldUseLocalDb(req, nodeKey) {
+  const userNode = normalizeNodeKey(req.user?.maCS);
+  if (userNode && userNode !== nodeKey) return false;
+  return hasNodeCredentials(nodeKey);
 }
 
 async function tryProxyNode(req, nodeKey, path, query) {
@@ -60,6 +65,26 @@ async function tryProxyNode(req, nodeKey, path, query) {
   } catch (error) {
     console.warn(`[PROXY] Failed ${nodeKey} ${path}: ${error.message}`);
     return null;
+  }
+}
+
+async function tryLocalThenProxy(req, nodeKey, path, query, localTask) {
+  const preferProxy = canProxyToNode(req, nodeKey) && !shouldUseLocalDb(req, nodeKey);
+  if (preferProxy) {
+    const proxyResult = await tryProxyNode(req, nodeKey, path, query);
+    if (proxyResult) {
+      return proxyResult.data;
+    }
+  }
+
+  try {
+    return await localTask();
+  } catch (localError) {
+    const proxyResult = await tryProxyNode(req, nodeKey, path, query);
+    if (proxyResult) {
+      return proxyResult.data;
+    }
+    throw localError;
   }
 }
 
@@ -111,25 +136,22 @@ router.get('/classes', authenticate, requireRole(['sinhvien']), async (req, res)
     });
   }
 
-  const proxyPath = '/api/hocphan/classes';
-  const proxyResult = await tryProxyNode(req, maCS, proxyPath, { maCS });
-  if (proxyResult) {
-    return res.status(proxyResult.status).json(proxyResult.data);
-  }
-
   try {
-    const pool = await safeGetPool(maCS);
-    const request = createRequest(maCS, null, pool);
-    let result;
-    try {
-      result = await request.query(
-        `SELECT ID_class
-         FROM [class]
-         ORDER BY ID_class`
-      );
-    } catch (error) {
-      throw withNode(maCS, error);
-    }
+    const result = await tryLocalThenProxy(
+      req,
+      maCS,
+      '/api/hocphan/classes',
+      { maCS },
+      async () => {
+        const pool = await safeGetPool(maCS);
+        const request = createRequest(maCS, null, pool);
+        return await request.query(
+          `SELECT ID_class
+           FROM [class]
+           ORDER BY ID_class`
+        );
+      }
+    );
 
     return res.json({
       success: true,
@@ -153,7 +175,6 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
   }
 
   try {
-    // Try cache first
     const cached = getCachedResult(maCS, 'available');
     if (cached) {
       return res.json({
@@ -163,51 +184,48 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
       });
     }
 
-    const proxyPath = '/api/hocphan/available';
-    const proxyResult = await tryProxyNode(req, maCS, proxyPath, { maCS });
-    if (proxyResult) {
-      if (proxyResult.data?.success) {
-        setCachedResult(maCS, 'available', proxyResult.data?.data ?? []);
+    const result = await tryLocalThenProxy(
+      req,
+      maCS,
+      '/api/hocphan/available',
+      { maCS },
+      async () => {
+        const pool = await safeGetPool(maCS);
+        const request = createRequest(maCS, null, pool);
+        return await request.query(
+          `SELECT TOP 100
+             c.ID_class AS maMH,
+             s.name_subject AS tenMonHoc,
+             s.number_of_credit AS soTC,
+             c.group_number AS nhom,
+             t.name_teacher AS giangVien,
+             c.max_students AS siSoToiDa,
+             c.number_of_registration AS siSoDaDangKy,
+             (c.max_students - c.number_of_registration) AS conLai,
+             c.class_status AS trangThai,
+             tm.name_term AS hocKy
+           FROM [class] c
+           JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
+           JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+           JOIN term tm ON tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
+           WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
+             AND c.max_students > c.number_of_registration
+           ORDER BY c.ID_class`
+        );
       }
-      return res.status(proxyResult.status).json(proxyResult.data);
+    );
+
+    if (result && result.recordset) {
+      const data = result.recordset;
+      setCachedResult(maCS, 'available', data);
+      return res.json({
+        success: true,
+        data,
+        cached: false
+      });
     }
 
-    const pool = await safeGetPool(maCS);
-    const request = createRequest(maCS, null, pool);
-    let result;
-    try {
-      result = await request.query(
-        `SELECT TOP 100
-           c.ID_class AS maMH,
-           s.name_subject AS tenMonHoc,
-           s.number_of_credit AS soTC,
-           c.group_number AS nhom,
-           t.name_teacher AS giangVien,
-           c.max_students AS siSoToiDa,
-           c.number_of_registration AS siSoDaDangKy,
-           (c.max_students - c.number_of_registration) AS conLai,
-           c.class_status AS trangThai,
-           tm.name_term AS hocKy
-         FROM [class] c
-         JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
-         JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-         JOIN term tm ON tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
-         WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
-           AND c.max_students > c.number_of_registration
-         ORDER BY c.ID_class`
-      );
-    } catch (error) {
-      throw withNode(maCS, error);
-    }
-
-    const data = result.recordset;
-    setCachedResult(maCS, 'available', data);
-
-    return res.json({
-      success: true,
-      data,
-      cached: false
-    });
+    throw new Error('Không thể lấy dữ liệu từ cơ sở.');
   } catch (error) {
     return sendError(res, error);
   }
@@ -224,37 +242,34 @@ router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async 
     });
   }
 
-  const proxyPath = `/api/hocphan/schedule/${encodeURIComponent(classId)}`;
-  const proxyResult = await tryProxyNode(req, maCS, proxyPath, { maCS });
-  if (proxyResult) {
-    return res.status(proxyResult.status).json(proxyResult.data);
-  }
-
   try {
-    const pool = await safeGetPool(maCS);
-    const request = createRequest(maCS, null, pool);
-    request.input('classId', ID_TYPE, classId);
-    let result;
-    try {
-      result = await request.query(
-        `SELECT 
-           s.ID_session AS ID_session,
-           s.study_date AS ngayHoc,
-           s.day_of_week AS thuHoc,
-           s.note AS ghiChu,
-           ts.shift_no AS caHoc,
-           ts.start_time AS gioStart,
-           ts.end_time AS gioEnd,
-           r.name_room AS phongHoc
-         FROM [session] s
-         JOIN timeslot ts ON ts.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS
-         JOIN room r ON r.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS
-         WHERE s.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @classId COLLATE SQL_Latin1_General_CP1_CI_AS
-         ORDER BY s.study_date, ts.shift_no`
-      );
-    } catch (error) {
-      throw withNode(maCS, error);
-    }
+    const result = await tryLocalThenProxy(
+      req,
+      maCS,
+      `/api/hocphan/schedule/${encodeURIComponent(classId)}`,
+      { maCS },
+      async () => {
+        const pool = await safeGetPool(maCS);
+        const request = createRequest(maCS, null, pool);
+        request.input('classId', ID_TYPE, classId);
+        return await request.query(
+          `SELECT 
+             s.ID_session AS ID_session,
+             s.study_date AS ngayHoc,
+             s.day_of_week AS thuHoc,
+             s.note AS ghiChu,
+             ts.shift_no AS caHoc,
+             ts.start_time AS gioStart,
+             ts.end_time AS gioEnd,
+             r.name_room AS phongHoc
+           FROM [session] s
+           JOIN timeslot ts ON ts.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS
+           JOIN room r ON r.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS
+           WHERE s.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @classId COLLATE SQL_Latin1_General_CP1_CI_AS
+           ORDER BY s.study_date, ts.shift_no`
+        );
+      }
+    );
 
     return res.json({
       success: true,
@@ -267,35 +282,40 @@ router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async 
 
 router.get('/available-all', authenticate, requireRole(['sinhvien']), async (req, res) => {
   try {
-    const { getNodes } = await import('../config/nodes.js');
     const nodes = getNodes();
     const allClasses = {};
 
-    for (const [nodeKey, nodeInfo] of Object.entries(nodes)) {
+    for (const [nodeKey] of Object.entries(nodes)) {
       try {
-        const pool = await safeGetPool(nodeKey);
-        const request = createRequest(nodeKey, null, pool);
-        const result = await request.query(
-          `SELECT 
-              c.ID_class AS maMH,
-              s.name_subject AS tenMonHoc,
-              s.number_of_credit AS soTC,
-              c.group_number AS nhom,
-              t.name_teacher AS giangVien,
-              c.max_students AS siSoToiDa,
-              c.number_of_registration AS siSoDaDangKy,
-              (c.max_students - c.number_of_registration) AS conLai,
-              c.class_status AS trangThai,
-              tm.name_term AS hocKy
-            FROM [class] c
-            JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
-            JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-            JOIN term tm ON tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
-            WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
-              AND c.max_students > c.number_of_registration
-            ORDER BY c.ID_class`
-        );
-        allClasses[nodeKey] = result.recordset;
+        if (nodeKey === LOCAL_NODE) {
+          const pool = await safeGetPool(nodeKey);
+          const request = createRequest(nodeKey, null, pool);
+          const result = await request.query(
+            `SELECT 
+                c.ID_class AS maMH,
+                s.name_subject AS tenMonHoc,
+                s.number_of_credit AS soTC,
+                c.group_number AS nhom,
+                t.name_teacher AS giangVien,
+                c.max_students AS siSoToiDa,
+                c.number_of_registration AS siSoDaDangKy,
+                (c.max_students - c.number_of_registration) AS conLai,
+                c.class_status AS trangThai,
+                tm.name_term AS hocKy
+              FROM [class] c
+              JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
+              JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+              JOIN term tm ON tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
+              WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
+                AND c.max_students > c.number_of_registration
+              ORDER BY c.ID_class`
+          );
+          allClasses[nodeKey] = result.recordset;
+          continue;
+        }
+
+        const proxyResult = await callRemoteNode(nodeKey, 'GET', `/api/hocphan/available?maCS=${encodeURIComponent(nodeKey)}`, null, req.headers.authorization);
+        allClasses[nodeKey] = proxyResult.data?.data ?? [];
       } catch (err) {
         console.log(`[DB] Failed to fetch from ${nodeKey}:`, err.message);
         allClasses[nodeKey] = [];
@@ -319,6 +339,19 @@ router.get('/:id', authenticate, requireRole(['quantrivien']), ensureHQHD, async
     }
     return res.json({ success: true, data: rows[0] });
   } catch (error) {
+    if (isProxyRequest(req)) {
+      return sendError(res, error);
+    }
+    try {
+      const proxyResult = await fetchNodeApiJson('HQHD', `/api/hocphan/${req.params.id}`, {
+        headers: getProxyHeaders(req)
+      });
+      if (proxyResult.ok) {
+        return res.status(proxyResult.status).json(proxyResult.data);
+      }
+    } catch (proxyErr) {
+      console.warn(`[PROXY] Failed: ${proxyErr.message}`);
+    }
     return sendError(res, error);
   }
 });
@@ -328,6 +361,21 @@ router.put('/:id', authenticate, requireRole(['quantrivien']), ensureHQHD, async
     await updateRow('HQHD', 'subject', req.body ?? {}, { ID_subject: req.params.id });
     return res.json({ success: true });
   } catch (error) {
+    if (isProxyRequest(req)) {
+      return sendError(res, error);
+    }
+    try {
+      const proxyResult = await fetchNodeApiJson('HQHD', `/api/hocphan/${req.params.id}`, {
+        method: 'PUT',
+        body: req.body ?? {},
+        headers: getProxyHeaders(req)
+      });
+      if (proxyResult.ok) {
+        return res.status(proxyResult.status).json(proxyResult.data);
+      }
+    } catch (proxyErr) {
+      console.warn(`[PROXY] Failed: ${proxyErr.message}`);
+    }
     return sendError(res, error);
   }
 });
@@ -337,6 +385,20 @@ router.delete('/:id', authenticate, requireRole(['quantrivien']), ensureHQHD, as
     await deleteRow('HQHD', 'subject', { ID_subject: req.params.id });
     return res.json({ success: true });
   } catch (error) {
+    if (isProxyRequest(req)) {
+      return sendError(res, error);
+    }
+    try {
+      const proxyResult = await fetchNodeApiJson('HQHD', `/api/hocphan/${req.params.id}`, {
+        method: 'DELETE',
+        headers: getProxyHeaders(req)
+      });
+      if (proxyResult.ok) {
+        return res.status(proxyResult.status).json(proxyResult.data);
+      }
+    } catch (proxyErr) {
+      console.warn(`[PROXY] Failed: ${proxyErr.message}`);
+    }
     return sendError(res, error);
   }
 });
@@ -346,6 +408,19 @@ router.get('/', authenticate, requireRole(['quantrivien']), ensureHQHD, async (r
     const { rows } = await queryRows('HQHD', 'subject', {}, 500);
     return res.json({ success: true, data: rows });
   } catch (error) {
+    if (isProxyRequest(req)) {
+      return sendError(res, error);
+    }
+    try {
+      const proxyResult = await fetchNodeApiJson('HQHD', '/api/hocphan', {
+        headers: getProxyHeaders(req)
+      });
+      if (proxyResult.ok) {
+        return res.status(proxyResult.status).json(proxyResult.data);
+      }
+    } catch (proxyErr) {
+      console.warn(`[PROXY] Failed: ${proxyErr.message}`);
+    }
     return sendError(res, error);
   }
 });
@@ -355,6 +430,21 @@ router.post('/', authenticate, requireRole(['quantrivien']), ensureHQHD, async (
     await insertRow('HQHD', 'subject', req.body ?? {});
     return res.json({ success: true });
   } catch (error) {
+    if (isProxyRequest(req)) {
+      return sendError(res, error);
+    }
+    try {
+      const proxyResult = await fetchNodeApiJson('HQHD', '/api/hocphan', {
+        method: 'POST',
+        body: req.body ?? {},
+        headers: getProxyHeaders(req)
+      });
+      if (proxyResult.ok) {
+        return res.status(proxyResult.status).json(proxyResult.data);
+      }
+    } catch (proxyErr) {
+      console.warn(`[PROXY] Failed: ${proxyErr.message}`);
+    }
     return sendError(res, error);
   }
 });

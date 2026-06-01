@@ -2,13 +2,21 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const nodeDefaults = {
-  HQHD: { server: 'IP_1', database: 'QLDangKy_HQHD' },
-  HQHL: { server: 'IP_2', database: 'QLDangKy_HQHL' },
-  HQHCM: { server: 'IP_3', database: 'QLDangKy_HQHCM' }
+export const nodeKeys = ['HQHD', 'HQHL', 'HQHCM'];
+export const LOCAL_NODE = process.env.LOCAL_NODE ? String(process.env.LOCAL_NODE).trim() : null;
+
+export const localDbConfig = {
+  server: process.env.LOCAL_SERVER ?? null,
+  database: process.env.LOCAL_DATABASE ?? null,
+  instanceName: process.env.LOCAL_INSTANCE ?? null,
+  user: process.env.LOCAL_USER ?? null,
+  password: process.env.LOCAL_PASSWORD ?? null,
+  options: {
+    trustServerCertificate: true,
+    encrypt: false
+  }
 };
 
-export const nodeKeys = ['HQHD', 'HQHL', 'HQHCM'];
 const headquarterDefaults = {
   HQHD: 'HQHD',
   HQHL: 'HQHL',
@@ -16,20 +24,13 @@ const headquarterDefaults = {
 };
 
 export function getNodes() {
-  return {
-    HQHD: {
-      server: process.env.HQHD_SERVER ?? nodeDefaults.HQHD.server,
-      database: process.env.HQHD_DATABASE ?? nodeDefaults.HQHD.database
-    },
-    HQHL: {
-      server: process.env.HQHL_SERVER ?? nodeDefaults.HQHL.server,
-      database: process.env.HQHL_DATABASE ?? nodeDefaults.HQHL.database
-    },
-    HQHCM: {
-      server: process.env.HQHCM_SERVER ?? nodeDefaults.HQHCM.server,
-      database: process.env.HQHCM_DATABASE ?? nodeDefaults.HQHCM.database
-    }
-  };
+  return nodeKeys.reduce((acc, key) => {
+    acc[key] = {
+      node: key,
+      apiBase: getNodeApiBase(key)
+    };
+    return acc;
+  }, {});
 }
 
 export function getNode(nodeKey) {
@@ -70,3 +71,14 @@ export function getNodeApiBase(nodeKey) {
   const envKey = `${key}_API_BASE`;
   return normalizeApiBase(process.env[envKey]);
 }
+
+export const nodeApiBase = {
+  HQHD: getNodeApiBase('HQHD'),
+  HQHL: getNodeApiBase('HQHL'),
+  HQHCM: getNodeApiBase('HQHCM')
+};
+
+export function isLocalNode(nodeKey) {
+  return normalizeNodeKey(nodeKey) === normalizeNodeKey(LOCAL_NODE);
+}
+

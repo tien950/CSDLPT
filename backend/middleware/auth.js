@@ -1,6 +1,17 @@
 import jwt from 'jsonwebtoken';
 
+function isInternalCall(req) {
+  const header = req.headers['x-internal-call'];
+  const value = Array.isArray(header) ? header[0] : header;
+  return String(value ?? '').trim().toLowerCase() === 'true';
+}
+
 export function authenticate(req, res, next) {
+  if (isInternalCall(req)) {
+    req.user = req.user ?? { role: 'system' };
+    return next();
+  }
+
   const authHeader = req.headers.authorization ?? '';
   const [scheme, token] = authHeader.split(' ');
 
@@ -26,7 +37,8 @@ export function authenticate(req, res, next) {
       role: payload.role,
       maCS: payload.maCS ?? payload.ID_headquarter,
       ID_headquarter: payload.ID_headquarter ?? payload.maCS,
-      ID_user: payload.ID_user ?? payload.id
+      ID_user: payload.ID_user ?? payload.id,
+      LOCAL_NODE: payload.LOCAL_NODE ?? payload.localNode ?? null
     };
     return next();
   } catch (error) {
