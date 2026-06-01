@@ -1,9 +1,28 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../config/api.js';
 
+const SCHEDULE_CONCURRENCY = 6;
+
 function formatDate(dateStr) {
   if (!dateStr) return '-';
   return new Date(dateStr).toLocaleDateString('vi-VN');
+}
+
+async function mapWithConcurrency(items, mapper, concurrency = SCHEDULE_CONCURRENCY) {
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
 }
 
 function formatTime(timeStr) {
@@ -97,8 +116,9 @@ export default function DanhSachDangKy({ user }) {
         const availableClasses = availData.data || [];
         setAvailable(availableClasses);
         if (availableClasses.length > 0) {
-          const scheduleEntries = await Promise.all(
-            availableClasses.map(async (cls) => {
+          const scheduleEntries = await mapWithConcurrency(
+            availableClasses,
+            async (cls) => {
               try {
                 const scheduleData = await apiFetch(
                   `/api/hocphan/schedule/${cls.maMH}?maCS=${maCS}`,
@@ -108,7 +128,8 @@ export default function DanhSachDangKy({ user }) {
               } catch {
                 return [cls.maMH, []];
               }
-            })
+            },
+            SCHEDULE_CONCURRENCY
           );
           setSchedules(Object.fromEntries(scheduleEntries));
         }

@@ -56,8 +56,11 @@ export async function authFetch(path, options = {}) {
 
   const res = await fetchWithTimeout(`${API_LOCAL}${path}`, {
     ...requestOptions,
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      Pragma: 'no-cache',
       ...(requestOptions.headers || {}),
     },
   });
@@ -83,8 +86,11 @@ export async function apiFetch(path, maCS, options = {}) {
 
   const res = await fetchWithTimeout(`${apiBase}${path}`, {
     ...requestOptions,
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      Pragma: 'no-cache',
       ...(requestOptions.headers || {}),
       Authorization: `Bearer ${token}`,
     },

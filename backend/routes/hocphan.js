@@ -88,6 +88,13 @@ async function tryLocalThenProxy(req, nodeKey, path, query, localTask) {
   }
 }
 
+function normalizeRows(result) {
+  if (!result) return [];
+  if (Array.isArray(result.recordset)) return result.recordset;
+  if (Array.isArray(result.data)) return result.data;
+  return [];
+}
+
 function sendError(res, error) {
   if (isOfflineError(error)) {
     const node = error.node ?? 'UNKNOWN';
@@ -153,10 +160,11 @@ router.get('/classes', authenticate, requireRole(['sinhvien']), async (req, res)
       }
     );
 
+    const rows = normalizeRows(result);
     return res.json({
       success: true,
-      data: result.recordset.map(row => ({
-        id_class: row.ID_class
+      data: rows.map(row => ({
+        id_class: row.ID_class ?? row.id_class
       }))
     });
   } catch (error) {
@@ -215,8 +223,8 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
       }
     );
 
-    if (result && result.recordset) {
-      const data = result.recordset;
+    const data = normalizeRows(result);
+    if (Array.isArray(data)) {
       setCachedResult(maCS, 'available', data);
       return res.json({
         success: true,
@@ -273,7 +281,7 @@ router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async 
 
     return res.json({
       success: true,
-      data: result.recordset
+      data: normalizeRows(result)
     });
   } catch (error) {
     return sendError(res, error);
