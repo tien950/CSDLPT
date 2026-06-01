@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '../config/api.js';
 
 const statusLabels = {
   online: 'Online',
@@ -6,28 +7,21 @@ const statusLabels = {
   error: 'Lỗi'
 };
 
-export default function NodeStatusBar({ apiBase, token, autoRefreshMs = 5000 }) {
+export default function NodeStatusBar({ maCS, autoRefreshMs = 5000 }) {
   const [nodes, setNodes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
+  const selectedCampus = maCS ?? localStorage.getItem('userNode') ?? 'HQHD';
+
   const fetchStatus = useCallback(async () => {
     setLoading(true);
     setMessage('');
     try {
-      const response = await fetch(`${apiBase}/api/admin/node-status`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.success) {
-        setMessage(payload.message ?? 'Không thể tải trạng thái node.');
-        return;
-      }
-      const nodesPayload = payload.nodes ?? {};
+      const payload = await apiFetch('/api/admin/node-status', selectedCampus);
+      const nodesPayload = payload?.nodes ?? {};
       const rows = Object.entries(nodesPayload).map(([node, info]) => ({
         node,
         status: info.status ?? 'offline',
@@ -40,7 +34,7 @@ export default function NodeStatusBar({ apiBase, token, autoRefreshMs = 5000 }) 
     } finally {
       setLoading(false);
     }
-  }, [apiBase, token]);
+  }, [selectedCampus]);
 
   const summary = useMemo(() => {
     return nodes.reduce(

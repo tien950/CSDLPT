@@ -85,12 +85,12 @@ app.use('/api/thoikhoabieu', thoikhoabieuRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Không tìm thấy API.'
+    message: 'Không tìm thấy API.',
   });
 });
 
-const server = app.listen(port, () => {
-  console.log(`API server running on port ${port}`);
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log(`API server running on http://0.0.0.0:${port}`);
 });
 
 async function shutdown() {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { apiFetch } from '../config/api.js';
 
-export default function Login({ apiBase, onLogin }) {
+export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -12,16 +13,11 @@ export default function Login({ apiBase, onLogin }) {
     setMessage('');
 
     try {
-      const response = await fetch(`${apiBase}/api/auth/login`, {
+      const preferredCampus = localStorage.getItem('userNode') ?? 'HQHD';
+      const payload = await apiFetch('/api/auth/login', preferredCampus, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: { username, password }
       });
-      const payload = await response.json();
-
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.message ?? 'Đăng nhập thất bại.');
-      }
 
       onLogin(payload.data);
     } catch (error) {

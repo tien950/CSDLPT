@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '../../config/api.js';
 
 const NODE_OPTIONS = [
   { key: 'HQHD', label: 'Hà Đông' },
@@ -6,7 +7,7 @@ const NODE_OPTIONS = [
   { key: 'HQHCM', label: 'TP. Hồ Chí Minh' }
 ];
 
-export default function ThongKe({ apiBase, token, user }) {
+export default function ThongKe({ user }) {
   const [nodeKey, setNodeKey] = useState(user?.maCS ?? 'HQHD');
   const [scope, setScope] = useState(user?.role === 'quantrivien' ? 'all' : 'node');
   const [loading, setLoading] = useState(false);
@@ -26,15 +27,13 @@ export default function ThongKe({ apiBase, token, user }) {
           params.set('maCS', nodeKey);
         }
 
-        const res = await fetch(`${apiBase}/api/thongke/overview?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const result = await res.json();
-        if (!result.success) {
-          setError(result.message || 'Không thể tải thống kê.');
+        const baseCampus = scope === 'node' ? nodeKey : (user?.maCS ?? nodeKey);
+        const data = await apiFetch(`/api/thongke/overview?${params.toString()}`, baseCampus);
+        if (!data.success) {
+          setError(data.message || 'Không thể tải thống kê.');
           setData(null);
         } else {
-          setData(result.data);
+          setData(data.data);
         }
       } catch (err) {
         setError('Có lỗi khi tải thống kê: ' + err.message);
@@ -45,7 +44,7 @@ export default function ThongKe({ apiBase, token, user }) {
     };
 
     fetchStats();
-  }, [apiBase, token, nodeKey, scope]);
+  }, [nodeKey, scope, user?.maCS]);
 
   const rows = useMemo(() => {
     const perNode = data?.perNode ?? {};
@@ -161,4 +160,3 @@ export default function ThongKe({ apiBase, token, user }) {
     </div>
   );
 }
-

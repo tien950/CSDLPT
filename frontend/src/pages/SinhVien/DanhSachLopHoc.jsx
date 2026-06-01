@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import Pagination from '../../components/Pagination';
+import { apiFetch } from '../../config/api.js';
 
 const campusOptions = [
   { value: 'HQHD', label: 'Hà Đông' },
@@ -9,14 +10,15 @@ const campusOptions = [
 
 function formatMessage(payload) {
   if (!payload) return '';
+  if (payload instanceof Error) return payload.message;
   if (payload.node && payload.status === 'offline') {
     return `Node ${payload.node} đang offline.`;
   }
-  return payload.message ?? 'Có lỗi xảy ra.';
+  return payload.message ?? String(payload);
 }
 
-export default function DanhSachLopHoc({ apiBase, token, user }) {
-  const [maCS, setMaCS] = useState(user.maCS);
+export default function DanhSachLopHoc({ user }) {
+  const [maCS, setMaCS] = useState(user?.maCS ?? 'HQHD');
   const [page, setPage] = useState(1);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -25,9 +27,9 @@ export default function DanhSachLopHoc({ apiBase, token, user }) {
   const [cache, setCache] = useState({});
 
   const campusLabel = useMemo(() => {
-    const option = campusOptions.find(item => item.value === user.maCS);
-    return option ? option.label : user.maCS;
-  }, [user.maCS]);
+    const option = campusOptions.find(item => item.value === user?.maCS);
+    return option ? option.label : user?.maCS;
+  }, [user?.maCS]);
 
   const cacheKey = `${maCS}_${page}`;
 
@@ -43,16 +45,15 @@ export default function DanhSachLopHoc({ apiBase, token, user }) {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(
-          `${apiBase}/api/hocphan/available?maCS=${maCS}&page=${page}&pageSize=20`,
-          {
-            headers: { Authorization: `Bearer ${token}` }
-          }
+        const payload = await apiFetch(
+          `/api/hocphan/available?maCS=${maCS}&page=${page}&pageSize=20`,
+          maCS
         );
-        const payload = await response.json();
 
-        if (!response.ok || !payload.success) {
-          throw payload;
+        if (!payload?.success) {
+          setError(payload?.message ?? 'Không thể tải danh sách lớp học.');
+          setClasses([]);
+          return;
         }
 
         if (isActive) {
@@ -60,7 +61,6 @@ export default function DanhSachLopHoc({ apiBase, token, user }) {
           setClasses(data);
           setPagination(payload.pagination);
 
-          // Cache result
           setCache(prev => ({
             ...prev,
             [cacheKey]: {
@@ -85,7 +85,7 @@ export default function DanhSachLopHoc({ apiBase, token, user }) {
     return () => {
       isActive = false;
     };
-  }, [apiBase, token, maCS, page, cacheKey, cache]);
+  }, [maCS, page, cacheKey, cache]);
 
   const onPageChange = (newPage) => {
     setPage(newPage);
@@ -98,7 +98,7 @@ export default function DanhSachLopHoc({ apiBase, token, user }) {
         <label style={{ marginRight: '1rem' }}>
           Cơ sở:
           <select
-            value={maCS}
+            value={maCS ?? ''}
             onChange={e => {
               setMaCS(e.target.value);
               setPage(1);

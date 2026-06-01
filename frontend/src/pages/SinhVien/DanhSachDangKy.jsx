@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../../config/api.js';
 
 function formatDate(dateStr) {
   if (!dateStr) return '-';
@@ -51,7 +52,7 @@ function getStatusLabel(status) {
   }
 }
 
-export default function DanhSachDangKy({ apiBase, token }) {
+export default function DanhSachDangKy({ user }) {
   const [available, setAvailable] = useState([]);
   const [registered, setRegistered] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -59,40 +60,38 @@ export default function DanhSachDangKy({ apiBase, token }) {
   const [error, setError] = useState('');
   const [cancelling, setCancelling] = useState(null);
   const [registering, setRegistering] = useState(null);
-  const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedNode, setSelectedNode] = useState(
+    () => localStorage.getItem('userNode') ?? user?.maCS ?? 'HQHD'
+  );
 
   const nodes = ['HQHD', 'HQHL', 'HQHCM'];
   const nodeNames = { HQHD: 'Hà Đông', HQHL: 'Hòa Lạc', HQHCM: 'TP. Hồ Chí Minh' };
 
   useEffect(() => {
-    const userNode = localStorage.getItem('userNode') || 'HQHD';
-    setSelectedNode(userNode);
-    fetchData(userNode);
-  }, []);
+    if (!selectedNode) return;
+    localStorage.setItem('userNode', selectedNode);
+    fetchData(selectedNode);
+  }, [selectedNode]);
 
   const handleNodeChange = (e) => {
     const newNode = e.target.value;
     setSelectedNode(newNode);
-    localStorage.setItem('userNode', newNode);
-    fetchData(newNode);
   };
 
   const fetchData = async (nodeKey) => {
     const maCS = nodeKey || selectedNode;
+    const studentCampus = user?.maCS ?? maCS;
     setLoading(true);
     setError('');
     setSchedules({});
     try {
-      const [availRes, regRes] = await Promise.all([
-        fetch(`${apiBase}/api/hocphan/available?maCS=${maCS}`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${apiBase}/api/sinhvien/registrations`, { headers: { Authorization: `Bearer ${token}` } })
+      const [availData, regData] = await Promise.all([
+        apiFetch(`/api/hocphan/available?maCS=${maCS}`, maCS),
+        apiFetch('/api/sinhvien/registrations', studentCampus)
       ]);
 
-      const availData = await availRes.json();
-      const regData = await regRes.json();
-
-      if (!availData.success) {
-        setError(availData.message || 'Không thể tải danh sách môn học.');
+      if (!availData?.success) {
+        setError(availData?.message || 'Không thể tải danh sách môn học.');
         setAvailable([]);
       } else {
         const availableClasses = availData.data || [];
@@ -101,11 +100,11 @@ export default function DanhSachDangKy({ apiBase, token }) {
           const scheduleEntries = await Promise.all(
             availableClasses.map(async (cls) => {
               try {
-                const scheduleRes = await fetch(`${apiBase}/api/hocphan/schedule/${cls.maMH}?maCS=${maCS}`, {
-                  headers: { Authorization: `Bearer ${token}` }
-                });
-                const scheduleData = await scheduleRes.json();
-                return [cls.maMH, scheduleData.success ? scheduleData.data : []];
+                const scheduleData = await apiFetch(
+                  `/api/hocphan/schedule/${cls.maMH}?maCS=${maCS}`,
+                  maCS
+                );
+                return [cls.maMH, scheduleData?.success ? scheduleData.data : []];
               } catch {
                 return [cls.maMH, []];
               }
@@ -115,11 +114,12 @@ export default function DanhSachDangKy({ apiBase, token }) {
         }
       }
 
-      if (!regData.success) {
-        setError(prev => prev ? prev + ' | ' + (regData.message || 'Lỗi tải danh sách đã đăng ký') : (regData.message || 'Lỗi tải danh sách đã đăng ký'));
+      if (!regData?.success) {
+        setError(prev => prev
+          ? prev + ' | ' + (regData?.message || 'Lỗi tải danh sách đã đăng ký')
+          : (regData?.message || 'Lỗi tải danh sách đã đăng ký'));
         setRegistered([]);
       } else {
-        // Map Vietnamese column names from stored procedure
         const mapped = (regData.data || []).map(row => ({
           maDangKy: row['Mã đăng ký'] ?? row.maDangKy ?? row.id_registration,
           maMH: row['Mã lớp học phần'] ?? row.maMH ?? row.id_class,
@@ -168,19 +168,15 @@ export default function DanhSachDangKy({ apiBase, token }) {
 
     setCancelling(maDangKy);
     try {
-      const res = await fetch(`${apiBase}/api/dangky/cancel`, {
+      const studentCampus = user?.maCS ?? selectedNode;
+      const data = await apiFetch('/api/dangky/cancel', studentCampus, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ maDangKy })
+        body: { maDangKy }
       });
-      const data = await res.json();
 
       if (data.success) {
         alert('Hủy đăng ký thành công!');
-        fetchData();
+        fetchData(selectedNode);
       } else {
         alert(data.message || 'Hủy đăng ký thất bại.');
       }
@@ -194,22 +190,18 @@ export default function DanhSachDangKy({ apiBase, token }) {
   const handleRegister = async (maMH) => {
     setRegistering(maMH);
     try {
-      const res = await fetch(`${apiBase}/api/dangky`, {
+      const studentCampus = user?.maCS ?? selectedNode;
+      const data = await apiFetch('/api/dangky', studentCampus, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ 
+        body: {
           maLop: maMH,
           maCSLop: selectedNode
-        })
+        }
       });
-      const data = await res.json();
 
       if (data.success) {
         alert('Đăng ký thành công!');
-        fetchData();
+        fetchData(selectedNode);
       } else {
         alert(data.message || 'Đăng ký thất bại.');
       }
@@ -229,7 +221,7 @@ export default function DanhSachDangKy({ apiBase, token }) {
         <label htmlFor="nodeSelect" style={{ fontWeight: 'bold' }}>Chọn Cơ Sở:</label>
         <select
           id="nodeSelect"
-          value={selectedNode}
+          value={selectedNode ?? ''}
           onChange={handleNodeChange}
           style={{
             padding: '8px 12px',
@@ -247,7 +239,7 @@ export default function DanhSachDangKy({ apiBase, token }) {
 
       <div style={{ marginBottom: '2rem' }}>
         <h3 style={{ color: '#d32f2f', borderBottom: '3px solid #d32f2f', paddingBottom: '8px' }}>
-          Danh Sách Môn Học Mở Cho Đăng Ký ({nodeNames[selectedNode]})
+          Danh Sách Môn Học Mở Cho Đăng Ký ({nodeNames[selectedNode] ?? selectedNode ?? ''})
         </h3>
         {loading ? (
           <p>Đang tải...</p>

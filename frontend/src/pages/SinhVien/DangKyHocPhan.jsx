@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '../../config/api.js';
 
 const campusOptions = [
   { value: 'HQHD', label: 'Hà Đông' },
@@ -8,6 +9,7 @@ const campusOptions = [
 
 function formatMessage(payload) {
   if (!payload) return '';
+  if (payload instanceof Error) return payload.message;
   if (payload.node && payload.status === 'offline') {
     return `Node ${payload.node} đang offline.`;
   }
@@ -21,9 +23,9 @@ function deduplicateMessages(messages) {
   return Array.from(new Set(messages)).join(' | ');
 }
 
-export default function DangKyHocPhan({ apiBase, token, user }) {
+export default function DangKyHocPhan({ user }) {
   const [maLop, setMaLop] = useState('');
-  const [maCSLop, setMaCSLop] = useState(user.maCS);
+  const [maCSLop, setMaCSLop] = useState(user?.maCS ?? 'HQHD');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [classOptions, setClassOptions] = useState([]);
@@ -31,9 +33,9 @@ export default function DangKyHocPhan({ apiBase, token, user }) {
   const [classMessage, setClassMessage] = useState('');
 
   const campusLabel = useMemo(() => {
-    const option = campusOptions.find(item => item.value === user.maCS);
-    return option ? option.label : user.maCS;
-  }, [user.maCS]);
+    const option = campusOptions.find(item => item.value === user?.maCS);
+    return option ? option.label : user?.maCS;
+  }, [user?.maCS]);
 
   useEffect(() => {
     let isActive = true;
@@ -41,15 +43,7 @@ export default function DangKyHocPhan({ apiBase, token, user }) {
       setLoadingClasses(true);
       setClassMessage('');
       try {
-        const response = await fetch(`${apiBase}/api/hocphan/classes?maCS=${maCSLop}`, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
-        const payload = await response.json();
-        if (!response.ok || !payload.success) {
-          throw payload;
-        }
+        const payload = await apiFetch(`/api/hocphan/classes?maCS=${maCSLop}`, maCSLop);
         const rows = payload.data ?? [];
         if (!isActive) return;
         setClassOptions(rows);
@@ -61,7 +55,6 @@ export default function DangKyHocPhan({ apiBase, token, user }) {
          if (!isActive) return;
          setClassOptions([]);
          const msg = formatMessage(error);
-         // Deduplicate if message contains pipes
          const dedupMsg = msg.includes(' | ')
            ? deduplicateMessages(msg.split(' | '))
            : msg;
@@ -77,7 +70,7 @@ export default function DangKyHocPhan({ apiBase, token, user }) {
     return () => {
       isActive = false;
     };
-  }, [apiBase, token, maCSLop, maLop]);
+  }, [maCSLop, maLop]);
 
   const handleSubmit = async event => {
     event.preventDefault();
@@ -85,19 +78,10 @@ export default function DangKyHocPhan({ apiBase, token, user }) {
     setResult(null);
 
     try {
-      const response = await fetch(`${apiBase}/api/dangky`, {
+      const payload = await apiFetch('/api/dangky', user?.maCS ?? 'HQHD', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ maLop, maCSLop })
+        body: { maLop, maCSLop }
       });
-
-      const payload = await response.json();
-      if (!response.ok || !payload.success) {
-        throw payload;
-      }
 
       setResult({
         type: 'success',
@@ -106,7 +90,6 @@ export default function DangKyHocPhan({ apiBase, token, user }) {
       setMaLop('');
      } catch (error) {
        const msg = formatMessage(error);
-       // Deduplicate if message contains pipes
        const dedupMsg = msg.includes(' | ')
          ? deduplicateMessages(msg.split(' | '))
          : msg;
@@ -147,7 +130,7 @@ export default function DangKyHocPhan({ apiBase, token, user }) {
         <label>
           Cơ sở lớp học phần
           <select
-            value={maCSLop}
+            value={maCSLop ?? ''}
             onChange={event => setMaCSLop(event.target.value)}
           >
             {campusOptions.map(option => (

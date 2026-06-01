@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '../../config/api.js';
 
 const NODE_OPTIONS = [
   { key: 'HQHD', label: 'Hà Đông' },
@@ -151,7 +152,7 @@ function formatValue(value, column) {
   return String(value);
 }
 
-export default function QuanLyDuLieu({ apiBase, token, user }) {
+export default function QuanLyDuLieu({ user }) {
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState('');
   const [nodeKey, setNodeKey] = useState(user?.maCS ?? 'HQHD');
@@ -166,6 +167,7 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
   const [editKeys, setEditKeys] = useState(null);
 
   const canPickNode = user?.role === 'quantrivien';
+  const currentCampus = canPickNode ? nodeKey : (user?.maCS ?? nodeKey);
 
   const primaryKeys = useMemo(() => meta?.primaryKeys ?? [], [meta]);
   const primaryKeySet = useMemo(() => new Set(primaryKeys), [primaryKeys]);
@@ -177,10 +179,7 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
   useEffect(() => {
     const fetchTables = async () => {
       try {
-        const res = await fetch(`${apiBase}/api/admin/tables`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
+        const data = await apiFetch('/api/admin/tables', currentCampus);
         if (data.success) {
           setTables(data.data ?? []);
           if (!selectedTable && data.data?.length) {
@@ -195,7 +194,7 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
     };
 
     fetchTables();
-  }, [apiBase, token]);
+  }, [currentCampus]);
 
   useEffect(() => {
     if (!selectedTable) return;
@@ -205,16 +204,10 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
       setError('');
       try {
         const query = canPickNode ? `?maCS=${nodeKey}` : '';
-        const [metaRes, dataRes] = await Promise.all([
-          fetch(`${apiBase}/api/admin/meta/${selectedTable}${query}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          }),
-          fetch(`${apiBase}/api/admin/${selectedTable}${query}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          })
+        const [metaData, data] = await Promise.all([
+          apiFetch(`/api/admin/meta/${selectedTable}${query}`, currentCampus),
+          apiFetch(`/api/admin/${selectedTable}${query}`, currentCampus)
         ]);
-        const metaData = await metaRes.json();
-        const data = await dataRes.json();
         if (!metaData.success || !data.success) {
           setError(metaData.message || data.message || 'Không thể tải dữ liệu.');
           setMeta(null);
@@ -235,16 +228,13 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
     };
 
     fetchData();
-  }, [apiBase, token, selectedTable, nodeKey, canPickNode]);
+  }, [selectedTable, nodeKey, canPickNode, currentCampus]);
 
   useEffect(() => {
     const fetchDepartmentOptions = async () => {
       try {
         const query = canPickNode ? `?maCS=${nodeKey}` : '';
-        const res = await fetch(`${apiBase}/api/admin/department${query}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
+        const data = await apiFetch(`/api/admin/department${query}`, currentCampus);
         if (data.success) {
           setDepartmentOptions(data.data ?? []);
         } else {
@@ -256,16 +246,13 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
     };
 
     fetchDepartmentOptions();
-  }, [apiBase, token, nodeKey, canPickNode, selectedTable]);
+  }, [nodeKey, canPickNode, selectedTable, currentCampus]);
 
   useEffect(() => {
     const fetchCurriculumOptions = async () => {
       try {
         const query = canPickNode ? `?maCS=${nodeKey}` : '';
-        const res = await fetch(`${apiBase}/api/admin/curriculum${query}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
+        const data = await apiFetch(`/api/admin/curriculum${query}`, currentCampus);
         if (data.success) {
           setCurriculumOptions(data.data ?? []);
         } else {
@@ -277,7 +264,7 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
     };
 
     fetchCurriculumOptions();
-  }, [apiBase, token, nodeKey, canPickNode, selectedTable]);
+  }, [nodeKey, canPickNode, selectedTable, currentCampus]);
 
   const handleInputChange = (columnName, value) => {
     setFormData(prev => ({
@@ -322,18 +309,13 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
 
     setSaving(true);
     try {
-      const res = await fetch(`${apiBase}/api/admin/${selectedTable}`, {
+      const data = await apiFetch(`/api/admin/${selectedTable}`, currentCampus, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
+        body: {
           maCS: canPickNode ? nodeKey : undefined,
           keys
-        })
+        }
       });
-      const data = await res.json();
       if (!data.success) {
         alert(data.message || 'Xóa thất bại.');
         return;
@@ -366,7 +348,7 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
         data: payload
       };
 
-      let url = `${apiBase}/api/admin/${selectedTable}`;
+      let url = `/api/admin/${selectedTable}`;
       let method = 'POST';
 
       if (editKeys) {
@@ -374,25 +356,20 @@ export default function QuanLyDuLieu({ apiBase, token, user }) {
         body.keys = editKeys;
       }
 
-      const res = await fetch(url, {
+      const data = await apiFetch(url, currentCampus, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(body)
+        body
       });
 
-      const data = await res.json();
       if (!data.success) {
         alert(data.message || 'Lưu thất bại.');
         return;
       }
 
-      const refreshRes = await fetch(`${apiBase}/api/admin/${selectedTable}${canPickNode ? `?maCS=${nodeKey}` : ''}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const refreshData = await refreshRes.json();
+      const refreshData = await apiFetch(
+        `/api/admin/${selectedTable}${canPickNode ? `?maCS=${nodeKey}` : ''}`,
+        currentCampus
+      );
       if (refreshData.success) {
         setRows(refreshData.data ?? []);
       }

@@ -1,6 +1,6 @@
 import NodeStatusBar from '../../components/NodeStatusBar.jsx';
 
-export default function GiamSatNode({ apiBase, token }) {
+export default function GiamSatNode({ user }) {
   return (
     <div className="stack">
       <section className="card">
@@ -10,7 +10,7 @@ export default function GiamSatNode({ apiBase, token }) {
         </p>
       </section>
 
-      <NodeStatusBar apiBase={apiBase} token={token} />
+      <NodeStatusBar maCS={user?.maCS} />
     </div>
   );
 }

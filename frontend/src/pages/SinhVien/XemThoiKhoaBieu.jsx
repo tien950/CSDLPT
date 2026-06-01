@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../../config/api.js';
 
 function formatDate(dateStr) {
   if (!dateStr) return '-';
@@ -76,7 +77,7 @@ function groupScheduleByDay(schedules) {
   return Object.values(byDay).sort((a, b) => a.dayNum - b.dayNum);
 }
 
-export default function XemThoiKhoaBieu({ apiBase, token }) {
+export default function XemThoiKhoaBieu({ user }) {
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -96,16 +97,12 @@ export default function XemThoiKhoaBieu({ apiBase, token }) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${apiBase}/api/sinhvien/schedule`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
+      const data = await apiFetch('/api/sinhvien/schedule', user?.maCS ?? 'HQHD');
 
-      if (!data.success) {
-        setError(data.message || 'Không thể tải thời khóa biểu.');
+      if (!data?.success) {
+        setError(data?.message || 'Không thể tải thời khóa biểu.');
         setSchedules([]);
       } else {
-        // Map Vietnamese column names from stored procedure
         const mapped = (data.data || []).map(row => ({
           ID_session: row['Mã buổi học'] ?? row.ID_session ?? row.id_session,
           ID_class: row['Mã lớp học phần'] ?? row.ID_class ?? row.id_class,

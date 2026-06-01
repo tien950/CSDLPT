@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Login from './pages/Login.jsx';
 import DanhSachDangKy from './pages/SinhVien/DanhSachDangKy.jsx';
 import XemThoiKhoaBieu from './pages/SinhVien/XemThoiKhoaBieu.jsx';
@@ -34,10 +34,6 @@ const campusLabels = {
 export default function App() {
   const [auth, setAuth] = useState(() => loadAuth());
   const [currentPage, setCurrentPage] = useState('danh-sach-dang-ky');
-  const apiBase = useMemo(
-    () => import.meta.env.VITE_API_BASE ?? 'http://localhost:4000',
-    []
-  );
 
   const handleLogin = data => {
     const nextAuth = {
@@ -69,7 +65,7 @@ export default function App() {
   }, [user?.role]);
 
   if (!auth?.token) {
-    return <Login apiBase={apiBase} onLogin={handleLogin} />;
+    return <Login onLogin={handleLogin} />;
   }
 
   const campusName = campusLabels[user.maCS] ?? user.maCS;
@@ -129,8 +125,8 @@ export default function App() {
                Thời Khóa Biểu
              </button>
            </div>
-           {currentPage === 'danh-sach-dang-ky' && <DanhSachDangKy apiBase={apiBase} token={auth.token} />}
-           {currentPage === 'thoi-khoa-bieu' && <XemThoiKhoaBieu apiBase={apiBase} token={auth.token} />}
+           {currentPage === 'danh-sach-dang-ky' && <DanhSachDangKy user={user} />}
+           {currentPage === 'thoi-khoa-bieu' && <XemThoiKhoaBieu user={user} />}
          </>
        )}
 
@@ -195,13 +191,13 @@ export default function App() {
           </div>
 
           {currentPage === 'giam-sat-node' && user.role === 'quantrivien' && (
-            <GiamSatNode apiBase={apiBase} token={auth.token} />
+            <GiamSatNode user={user} />
           )}
           {currentPage === 'quan-ly-du-lieu' && (
-            <QuanLyDuLieu apiBase={apiBase} token={auth.token} user={user} />
+            <QuanLyDuLieu user={user} />
           )}
           {currentPage === 'thong-ke' && (
-            <ThongKe apiBase={apiBase} token={auth.token} user={user} />
+            <ThongKe user={user} />
           )}
         </>
       )}
