@@ -1,7 +1,7 @@
 ﻿import express from 'express';
 import sql from 'mssql';
 import { getPool } from '../config/db.js';
-import { LOCAL_NODE, normalizeNodeKey, getHeadquarterId, isValidNode } from '../config/nodes.js';
+import { LOCAL_NODE, nodeKeys, normalizeNodeKey, getHeadquarterId, isValidNode } from '../config/nodes.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 import { clearStudentCache } from '../utils/queryCache.js';
@@ -60,41 +60,172 @@ async function fetchStudentHeadquarterId(nodeKey, studentId) {
     return null;
   }
 }
-async function fetchAvailableClasses(nodeKey, termId) {
+function buildRemotePath(path, query = {}) {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    params.set(key, String(value));
+  });
+  const queryString = params.toString();
+  return queryString ? `${path}?${queryString}` : path;
+}
+
+function isMissingProcedureError(error) {
+  const message = String(error?.message ?? '').toLowerCase();
+  return message.includes('could not find stored procedure') || message.includes('usp_getclassesbycampus');
+}
+
+function getField(row, keys, fallback = null) {
+  for (const key of keys) {
+    if (row?.[key] !== undefined && row?.[key] !== null) {
+      return row[key];
+    }
+  }
+  return fallback;
+}
+
+function normalizeAvailableClassRow(row, fallbackNode = LOCAL_NODE) {
+  const maCSRaw = getField(row, ['maCS', 'ID_headquarter', 'Mã cơ sở', 'Ma co so']);
+  const maCS = normalizeNodeKey(maCSRaw) ?? normalizeNodeKey(fallbackNode) ?? LOCAL_NODE;
+  const maLop = getField(row, ['maLop', 'ID_class', 'Mã lớp học phần', 'Ma lop hoc phan']);
+  const maHocPhan = getField(row, ['maHocPhan', 'ID_subject', 'Mã học phần', 'Ma hoc phan']);
+  const tenHocPhan = getField(row, ['tenHocPhan', 'name_subject', 'Tên học phần', 'Ten hoc phan']);
+  const soTinChi = Number(getField(row, ['soTinChi', 'number_of_credit', 'Số tín chỉ', 'So tin chi'], 0)) || 0;
+  const maGiangVien = getField(row, ['maGiangVien', 'ID_teacher', 'Mã giảng viên', 'Ma giang vien']);
+  const tenGiangVien = getField(row, ['tenGiangVien', 'name_teacher', 'Giảng viên', 'Giang vien']);
+  const nhom = getField(row, ['nhom', 'group_number', 'Nhóm lớp', 'Nhom lop']);
+  const siSoDaDangKy = Number(getField(row, ['siSoDaDangKy', 'number_of_registration', 'Số lượng đã đăng ký', 'So luong da dang ky'], 0)) || 0;
+  const siSoToiDa = Number(getField(row, ['siSoToiDa', 'max_students', 'Sĩ số tối đa', 'Si so toi da'], 0)) || 0;
+  const choConLai = Number(getField(row, ['choConLai', 'remaining', 'Số chỗ còn lại', 'So cho con lai'], Math.max(siSoToiDa - siSoDaDangKy, 0))) || 0;
+  const trangThai = getField(row, ['trangThai', 'class_status', 'Trạng thái lớp', 'Trang thai lop']);
+  const ngayHoc = getField(row, ['ngayHoc', 'study_date', 'Ngày học', 'Ngay hoc']);
+  const thu = getField(row, ['thu', 'day_of_week', 'Thứ', 'Thu']);
+  const caHoc = getField(row, ['caHoc', 'shift_no', 'Ca học', 'Ca hoc']);
+  const gioBatDau = getField(row, ['gioBatDau', 'start_time', 'Giờ bắt đầu', 'Gio bat dau']);
+  const gioKetThuc = getField(row, ['gioKetThuc', 'end_time', 'Giờ kết thúc', 'Gio ket thuc']);
+  const maPhong = getField(row, ['maPhong', 'ID_room', 'Mã phòng', 'Ma phong']);
+  const phongHoc = getField(row, ['phongHoc', 'name_room', 'Phòng học', 'Phong hoc']);
+
+  return {
+    maCS,
+    tenCoSo: getField(row, ['tenCoSo', 'name_headquarter', 'Cơ sở mở lớp', 'Co so mo lop']),
+    maLop,
+    maHocPhan,
+    tenHocPhan,
+    soTinChi,
+    maGiangVien,
+    tenGiangVien,
+    nhom,
+    siSoDaDangKy,
+    siSoToiDa,
+    choConLai,
+    trangThai,
+    ngayHoc,
+    thu,
+    caHoc,
+    gioBatDau,
+    gioKetThuc,
+    maPhong,
+    phongHoc,
+    // backward-compatible keys
+    ID_headquarter: maCS,
+    ID_class: maLop,
+    ID_subject: maHocPhan,
+    name_subject: tenHocPhan,
+    number_of_credit: soTinChi,
+    ID_teacher: maGiangVien,
+    name_teacher: tenGiangVien,
+    group_number: nhom,
+    number_of_registration: siSoDaDangKy,
+    max_students: siSoToiDa,
+    remaining: choConLai,
+    class_status: trangThai,
+    study_date: ngayHoc,
+    day_of_week: thu,
+    shift_no: caHoc,
+    start_time: gioBatDau,
+    end_time: gioKetThuc,
+    ID_room: maPhong,
+    name_room: phongHoc
+  };
+}
+
+async function fetchAvailableClassesLegacy(nodeKey, options = {}) {
+  const { termId = null, subjectId = null, headquarterId = null } = options;
   const pool = await safeGetPool(nodeKey);
   const request = createRequest(nodeKey, null, pool);
+  request.input('headquarterId', ID_TYPE, headquarterId ?? getHeadquarterId(nodeKey) ?? nodeKey);
   if (termId) request.input('termId', ID_TYPE, termId);
+  if (subjectId) request.input('subjectId', ID_TYPE, subjectId);
   const termFilter = termId ? 'AND c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = @termId COLLATE SQL_Latin1_General_CP1_CI_AS' : '';
+  const subjectFilter = subjectId ? 'AND c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = @subjectId COLLATE SQL_Latin1_General_CP1_CI_AS' : '';
   const result = await request.query(
     `SELECT
+       h.ID_headquarter AS ID_headquarter,
+       h.name_headquarter AS name_headquarter,
        c.ID_class AS ID_class,
+       sub.ID_subject AS ID_subject,
+       sub.name_subject AS name_subject,
+       sub.number_of_credit AS number_of_credit,
+       te.ID_teacher AS ID_teacher,
+       te.name_teacher AS name_teacher,
        c.group_number AS group_number,
-       c.max_students AS max_students,
        c.number_of_registration AS number_of_registration,
-       (c.max_students - c.number_of_registration) AS remaining,
+       c.max_students AS max_students,
+       c.max_students - c.number_of_registration AS remaining,
        c.class_status AS class_status,
-       c.ID_term AS ID_term,
-       s.ID_subject AS ID_subject,
-       s.name_subject AS name_subject,
-       s.number_of_credit AS number_of_credit,
-       t.ID_teacher AS ID_teacher,
-       t.name_teacher AS name_teacher,
-       h.ID_headquarter AS ID_headquarter
+       ss.study_date AS study_date,
+       ss.day_of_week AS day_of_week,
+       ts.shift_no AS shift_no,
+       ts.start_time AS start_time,
+       ts.end_time AS end_time,
+       r.ID_room AS ID_room,
+       r.name_room AS name_room
      FROM [class] c
-     JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
-     WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
-       AND c.max_students > c.number_of_registration
+     JOIN subject sub
+       ON c.ID_subject = sub.ID_subject COLLATE DATABASE_DEFAULT
+     JOIN teacher te
+       ON c.ID_teacher = te.ID_teacher COLLATE DATABASE_DEFAULT
+     JOIN department d
+       ON te.ID_department = d.ID_department COLLATE DATABASE_DEFAULT
+     JOIN headquarter h
+       ON d.ID_headquarter = h.ID_headquarter COLLATE DATABASE_DEFAULT
+     JOIN [session] ss
+       ON c.ID_class = ss.ID_class COLLATE DATABASE_DEFAULT
+     JOIN room r
+       ON ss.ID_room = r.ID_room COLLATE DATABASE_DEFAULT
+     JOIN timeslot ts
+       ON ss.ID_timeslot = ts.ID_timeslot COLLATE DATABASE_DEFAULT
+     WHERE h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = @headquarterId COLLATE SQL_Latin1_General_CP1_CI_AS
+       AND c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
+       AND c.number_of_registration < c.max_students
        ${termFilter}
-     ORDER BY c.ID_class`
+       ${subjectFilter}
+     ORDER BY sub.ID_subject, c.ID_class, ss.study_date, ts.start_time`
   );
-  return result.recordset;
+  return result.recordset ?? [];
+}
+
+async function fetchAvailableClassesByCampus(nodeKey, options = {}) {
+  const { termId = null, subjectId = null, headquarterId = null } = options;
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  request.input('ID_headquarter', ID_TYPE, headquarterId ?? getHeadquarterId(nodeKey) ?? nodeKey);
+  request.input('ID_term', ID_TYPE, termId);
+  request.input('ID_subject', ID_TYPE, subjectId);
+  try {
+    const result = await request.execute('usp_GetClassesByCampus');
+    return result.recordset ?? [];
+  } catch (error) {
+    if (!isMissingProcedureError(error)) {
+      throw error;
+    }
+    return fetchAvailableClassesLegacy(nodeKey, { termId, subjectId, headquarterId });
+  }
 }
 async function getClassById(nodeKey, classId) {
   if (normalizeNodeKey(nodeKey) !== normalizeNodeKey(LOCAL_NODE)) {
-    const remote = await callRemoteNode(nodeKey, 'GET', `/api/internal/lophocphan/${encodeURIComponent(classId)}`, null, null);
+    const remote = await callRemoteNode(nodeKey, 'GET', `/api/dangky/internal/lophocphan/${encodeURIComponent(classId)}`, null, null);
     if (!remote.ok) {
       const error = new Error(remote.data?.message ?? 'Không lấy được thông tin lớp học phần.');
       error.status = remote.status;
@@ -152,13 +283,67 @@ async function updateLocalEnrollment(nodeKey, classId, delta) {
        WHERE ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_class COLLATE SQL_Latin1_General_CP1_CI_AS`;
   await request.query(updateSql);
 }
+
+function parseAvailableFilters(query = {}) {
+  const termId = query.ID_term ?? null;
+  const subjectId = query.ID_subject ?? null;
+  const requestedNodeRaw = query.maCS ?? query.ID_headquarter ?? null;
+  const requestedNode = requestedNodeRaw ? normalizeNodeKey(requestedNodeRaw) : null;
+
+  if (requestedNodeRaw && !requestedNode) {
+    const error = new Error('Mã cơ sở không hợp lệ.');
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    termId,
+    subjectId,
+    requestedNode
+  };
+}
+
+async function fetchAvailableClassesFromNode(nodeKey, filters, authToken) {
+  if (normalizeNodeKey(nodeKey) === normalizeNodeKey(LOCAL_NODE)) {
+    const rawRows = await fetchAvailableClassesByCampus(LOCAL_NODE, {
+      termId: filters.termId,
+      subjectId: filters.subjectId,
+      headquarterId: getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE
+    });
+    return rawRows.map(row => normalizeAvailableClassRow(row, LOCAL_NODE));
+  }
+
+  const remotePath = buildRemotePath('/api/dangky/internal/lophocphan', {
+    ID_term: filters.termId,
+    ID_subject: filters.subjectId,
+    ID_headquarter: getHeadquarterId(nodeKey) ?? nodeKey
+  });
+  const remote = await callRemoteNode(nodeKey, 'GET', remotePath, null, authToken);
+  if (!remote.ok) {
+    const error = new Error(remote.data?.message ?? 'Không lấy được danh sách lớp học phần.');
+    error.status = remote.status;
+    error.node = nodeKey;
+    error.offline = remote.data?.offline === true || remote.status === 503;
+    throw error;
+  }
+
+  const rows = Array.isArray(remote.data?.data) ? remote.data.data : [];
+  return rows.map(row => normalizeAvailableClassRow(row, nodeKey));
+}
+
 router.get('/internal/node-ping', (req, res) => {
   return res.json({ success: true, node: LOCAL_NODE, status: 'ok' });
 });
 router.get('/internal/lophocphan', authenticate, async (req, res) => {
   try {
-    const data = await fetchAvailableClasses(LOCAL_NODE, req.query.ID_term ?? null);
-    return res.json({ success: true, data });
+    const filters = parseAvailableFilters(req.query);
+    const data = await fetchAvailableClassesByCampus(LOCAL_NODE, {
+      termId: filters.termId,
+      subjectId: filters.subjectId,
+      headquarterId: getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE
+    });
+    const normalized = data.map(row => normalizeAvailableClassRow(row, LOCAL_NODE));
+    return res.json({ success: true, data: normalized });
   } catch (error) {
     return sendError(res, error);
   }
@@ -255,7 +440,7 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
     regId = await generateRegId(pool, LOCAL_NODE);
     await registerLocal(LOCAL_NODE, regId, maSV, maLop, headquarterStudent);
     console.log('[2PC] Phase 2: COMMIT', LOCAL_NODE, '->', maCSLopNormalized);
-    const remoteUpdate = await callRemoteNode(maCSLopNormalized, 'PUT', `/api/internal/lophocphan/${encodeURIComponent(maLop)}/enrollment`, null, req.headers.authorization);
+    const remoteUpdate = await callRemoteNode(maCSLopNormalized, 'PUT', `/api/dangky/internal/lophocphan/${encodeURIComponent(maLop)}/enrollment`, null, req.headers.authorization);
     if (!remoteUpdate.ok) {
       throw new Error(remoteUpdate.data?.message || 'Không thể cập nhật sĩ số lớp học phần.');
     }
@@ -316,10 +501,44 @@ router.delete('/:maDangKy', authenticate, requireRole(['sinhvien']), async (req,
   }
 });
 router.get('/available', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const termId = req.query.ID_term ?? null;
   try {
-    const data = await fetchAvailableClasses(LOCAL_NODE, termId);
-    return res.json({ success: true, data, meta: { offlineNodes: [] } });
+    const filters = parseAvailableFilters(req.query);
+    const targetNodes = filters.requestedNode ? [filters.requestedNode] : [...nodeKeys];
+    const fetchResults = await Promise.all(
+      targetNodes.map(async nodeKey => {
+        try {
+          const data = await fetchAvailableClassesFromNode(nodeKey, filters, req.headers.authorization);
+          return { node: nodeKey, data, offline: false };
+        } catch (error) {
+          if (isOfflineError(error) || error.offline || error.status === 503) {
+            return { node: nodeKey, data: [], offline: true, message: error.message };
+          }
+          throw error;
+        }
+      })
+    );
+
+    if (targetNodes.length === 1 && fetchResults[0]?.offline) {
+      return res.status(503).json({
+        success: false,
+        message: fetchResults[0].message ?? `Node ${targetNodes[0]} hiện không khả dụng`,
+        node: targetNodes[0],
+        offline: true
+      });
+    }
+
+    const offlineNodes = fetchResults.filter(item => item.offline).map(item => item.node);
+    const data = fetchResults
+      .flatMap(item => item.data)
+      .sort((a, b) => {
+        const subjectCmp = String(a.maHocPhan ?? '').localeCompare(String(b.maHocPhan ?? ''));
+        if (subjectCmp !== 0) return subjectCmp;
+        const classCmp = String(a.maLop ?? '').localeCompare(String(b.maLop ?? ''));
+        if (classCmp !== 0) return classCmp;
+        return String(a.ngayHoc ?? '').localeCompare(String(b.ngayHoc ?? ''));
+      });
+
+    return res.json({ success: true, data, meta: { offlineNodes } });
   } catch (error) {
     return sendError(res, error);
   }
