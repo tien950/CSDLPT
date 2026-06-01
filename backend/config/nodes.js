@@ -56,3 +56,17 @@ export function normalizeNodeKey(value) {
 export function isValidNode(nodeKey) {
   return normalizeNodeKey(nodeKey) !== null;
 }
+
+function normalizeApiBase(value) {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+}
+
+export function getNodeApiBase(nodeKey) {
+  const key = normalizeNodeKey(nodeKey);
+  if (!key) return null;
+  const envKey = `${key}_API_BASE`;
+  return normalizeApiBase(process.env[envKey]);
+}

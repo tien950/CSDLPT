@@ -69,6 +69,11 @@ HQHCM_PASSWORD=your_password
 
 # JWT Secret
 JWT_SECRET=your_secret_key_here
+
+# Optional: backend API base for cross-node proxy (if DB access is not shared)
+# HQHD_API_BASE=http://<ip-hqhd>:4000
+# HQHL_API_BASE=http://<ip-hqhl>:4000
+# HQHCM_API_BASE=http://<ip-hqcm>:4000
 ```
 
 ### 3. Khởi Động
