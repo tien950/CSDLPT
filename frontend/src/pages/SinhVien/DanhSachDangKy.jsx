@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../../config/api.js';
+import { apiFetch, gatewayFetch } from '../../config/api.js';
 
 const SCHEDULE_CONCURRENCY = 6;
 
@@ -100,13 +100,16 @@ export default function DanhSachDangKy({ user }) {
   const fetchData = async (nodeKey) => {
     const maCS = nodeKey || selectedNode;
     const studentCampus = user?.maCS ?? maCS;
+    const useGateway = maCS !== studentCampus;
     setLoading(true);
     setError('');
     setSchedules({});
     try {
       const [availData, regData] = await Promise.all([
-        apiFetch(`/api/hocphan/available?maCS=${maCS}`, maCS),
-        apiFetch('/api/sinhvien/registrations', studentCampus)
+        useGateway
+          ? gatewayFetch(`/api/hocphan/available?maCS=${maCS}`)
+          : apiFetch(`/api/hocphan/available?maCS=${maCS}`, maCS),
+        gatewayFetch('/api/sinhvien/registrations')
       ]);
 
       if (!availData?.success) {
@@ -120,10 +123,10 @@ export default function DanhSachDangKy({ user }) {
             availableClasses,
             async (cls) => {
               try {
-                const scheduleData = await apiFetch(
-                  `/api/hocphan/schedule/${cls.maMH}?maCS=${maCS}`,
-                  maCS
-                );
+                const path = `/api/hocphan/schedule/${cls.maMH}?maCS=${maCS}`;
+                const scheduleData = useGateway
+                  ? await gatewayFetch(path)
+                  : await apiFetch(path, maCS);
                 return [cls.maMH, scheduleData?.success ? scheduleData.data : []];
               } catch {
                 return [cls.maMH, []];
@@ -189,8 +192,7 @@ export default function DanhSachDangKy({ user }) {
 
     setCancelling(maDangKy);
     try {
-      const studentCampus = user?.maCS ?? selectedNode;
-      const data = await apiFetch('/api/dangky/cancel', studentCampus, {
+      const data = await gatewayFetch('/api/dangky/cancel', {
         method: 'POST',
         body: { maDangKy }
       });
@@ -212,13 +214,17 @@ export default function DanhSachDangKy({ user }) {
     setRegistering(maMH);
     try {
       const studentCampus = user?.maCS ?? selectedNode;
-      const data = await apiFetch('/api/dangky', studentCampus, {
+      const isCrossCampus = selectedNode !== studentCampus;
+      const requestPayload = {
         method: 'POST',
         body: {
           maLop: maMH,
           maCSLop: selectedNode
         }
-      });
+      };
+      const data = isCrossCampus
+        ? await gatewayFetch('/api/dangky', requestPayload)
+        : await apiFetch('/api/dangky', studentCampus, requestPayload);
 
       if (data.success) {
         alert('Đăng ký thành công!');

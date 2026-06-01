@@ -60,11 +60,14 @@ async function proxyIfRemote(req, nodeKey) {
 
 function resolveNodeKey(req) {
   const role = req.user?.role;
+  const userNode = normalizeNodeKey(req.user?.maCS);
+  const localNode = normalizeNodeKey(LOCAL_NODE);
+  const isHqhdGlobalAdmin = role === 'quantrivien' && userNode === 'HQHD' && localNode === 'HQHD';
   const nodeFromRequest = normalizeNodeKey(req.query.maCS ?? req.body?.maCS ?? req.body?.node);
-  if (role === 'quantrivien' && nodeFromRequest && isValidNode(nodeFromRequest)) {
+  if (isHqhdGlobalAdmin && nodeFromRequest && isValidNode(nodeFromRequest)) {
     return nodeFromRequest;
   }
-  return normalizeNodeKey(req.user?.maCS);
+  return userNode;
 }
 
 function resolveSqlType(column) {

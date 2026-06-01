@@ -2,7 +2,7 @@ import express from 'express';
 import sql from 'mssql';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { getPool, hasNodeCredentials } from '../config/db.js';
-import { LOCAL_NODE, getNodeApiBase, isValidNode, normalizeNodeKey, getNodes } from '../config/nodes.js';
+import { LOCAL_NODE, getHeadquarterId, getNodeApiBase, isValidNode, normalizeNodeKey, getNodes } from '../config/nodes.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 import { deleteRow, insertRow, queryRows, updateRow } from '../utils/tableCrud.js';
 import { callRemoteNode } from '../utils/remoteApi.js';
@@ -95,6 +95,59 @@ function normalizeRows(result) {
   return [];
 }
 
+function getRowField(row, keys, fallback = null) {
+  for (const key of keys) {
+    if (row?.[key] !== undefined && row?.[key] !== null) {
+      return row[key];
+    }
+  }
+  return fallback;
+}
+
+function normalizeAvailableClassRow(row) {
+  const maMH = getRowField(row, ['maMH', 'Mã lớp học phần', 'ID_class']);
+  return {
+    maMH,
+    tenMonHoc: getRowField(row, ['tenMonHoc', 'Tên học phần', 'name_subject']),
+    soTC: Number(getRowField(row, ['soTC', 'Số tín chỉ', 'number_of_credit'], 0)) || 0,
+    nhom: getRowField(row, ['nhom', 'Nhóm lớp', 'group_number']),
+    giangVien: getRowField(row, ['giangVien', 'Giảng viên', 'name_teacher']),
+    siSoToiDa: Number(getRowField(row, ['siSoToiDa', 'Sĩ số tối đa', 'max_students'], 0)) || 0,
+    siSoDaDangKy: Number(getRowField(row, ['siSoDaDangKy', 'Số lượng đã đăng ký', 'number_of_registration'], 0)) || 0,
+    conLai: Number(getRowField(row, ['conLai', 'Số chỗ còn lại', 'remaining'], 0)) || 0,
+    trangThai: getRowField(row, ['trangThai', 'Trạng thái lớp', 'class_status']),
+    hocKy: getRowField(row, ['hocKy', 'name_term', 'Học kỳ']),
+    maCS: normalizeNodeKey(getRowField(row, ['maCS', 'Mã cơ sở', 'ID_headquarter'])) ?? null
+  };
+}
+
+function collapseByClass(rows) {
+  const byClass = new Map();
+  rows.forEach(row => {
+    if (!row?.maMH) return;
+    if (!byClass.has(row.maMH)) {
+      byClass.set(row.maMH, row);
+    }
+  });
+  return Array.from(byClass.values());
+}
+
+async function proxyToHqhd(req, res) {
+  if (LOCAL_NODE === 'HQHD' || isProxyRequest(req)) {
+    return null;
+  }
+
+  try {
+    const proxyResult = await fetchNodeApiJson('HQHD', req.originalUrl, {
+      method: req.method,
+      headers: getProxyHeaders(req)
+    });
+    return res.status(proxyResult.status).json(proxyResult.data);
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
 function sendError(res, error) {
   if (isOfflineError(error)) {
     const node = error.node ?? 'UNKNOWN';
@@ -173,7 +226,13 @@ router.get('/classes', authenticate, requireRole(['sinhvien']), async (req, res)
 });
 
 router.get('/available', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  const proxyResponse = await proxyToHqhd(req, res);
+  if (proxyResponse) {
+    return proxyResponse;
+  }
   const maCS = normalizeNodeKey(req.query.maCS) || normalizeNodeKey(req.user?.maCS);
+  const termId = req.query.ID_term ?? null;
+  const subjectId = req.query.ID_subject ?? null;
 
   if (!maCS || !isValidNode(maCS)) {
     return res.status(400).json({
@@ -183,7 +242,8 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
   }
 
   try {
-    const cached = getCachedResult(maCS, 'available');
+    const cacheKey = `available:${termId ?? ''}:${subjectId ?? ''}`;
+    const cached = getCachedResult(maCS, cacheKey);
     if (cached) {
       return res.json({
         success: true,
@@ -192,40 +252,16 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
       });
     }
 
-    const result = await tryLocalThenProxy(
-      req,
-      maCS,
-      '/api/hocphan/available',
-      { maCS },
-      async () => {
-        const pool = await safeGetPool(maCS);
-        const request = createRequest(maCS, null, pool);
-        return await request.query(
-          `SELECT TOP 100
-             c.ID_class AS maMH,
-             s.name_subject AS tenMonHoc,
-             s.number_of_credit AS soTC,
-             c.group_number AS nhom,
-             t.name_teacher AS giangVien,
-             c.max_students AS siSoToiDa,
-             c.number_of_registration AS siSoDaDangKy,
-             (c.max_students - c.number_of_registration) AS conLai,
-             c.class_status AS trangThai,
-             tm.name_term AS hocKy
-           FROM [class] c
-           JOIN subject s ON s.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
-           JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-           JOIN term tm ON tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
-           WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
-             AND c.max_students > c.number_of_registration
-           ORDER BY c.ID_class`
-        );
-      }
-    );
+    const pool = await safeGetPool('HQHD');
+    const request = createRequest('HQHD', null, pool);
+    request.input('ID_headquarter', ID_TYPE, getHeadquarterId(maCS) ?? maCS);
+    request.input('ID_term', ID_TYPE, termId);
+    request.input('ID_subject', ID_TYPE, subjectId);
+    const result = await request.execute('usp_GetClassesByCampus');
 
-    const data = normalizeRows(result);
+    const data = collapseByClass(normalizeRows(result).map(normalizeAvailableClassRow));
     if (Array.isArray(data)) {
-      setCachedResult(maCS, 'available', data);
+      setCachedResult(maCS, cacheKey, data);
       return res.json({
         success: true,
         data,
@@ -240,6 +276,11 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
 });
 
 router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  const proxyResponse = await proxyToHqhd(req, res);
+  if (proxyResponse) {
+    return proxyResponse;
+  }
+
   const maCS = normalizeNodeKey(req.query.maCS) || normalizeNodeKey(req.user?.maCS);
   const { classId } = req.params;
 
@@ -251,32 +292,30 @@ router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async 
   }
 
   try {
-    const result = await tryLocalThenProxy(
-      req,
-      maCS,
-      `/api/hocphan/schedule/${encodeURIComponent(classId)}`,
-      { maCS },
-      async () => {
-        const pool = await safeGetPool(maCS);
-        const request = createRequest(maCS, null, pool);
-        request.input('classId', ID_TYPE, classId);
-        return await request.query(
-          `SELECT 
-             s.ID_session AS ID_session,
-             s.study_date AS ngayHoc,
-             s.day_of_week AS thuHoc,
-             s.note AS ghiChu,
-             ts.shift_no AS caHoc,
-             ts.start_time AS gioStart,
-             ts.end_time AS gioEnd,
-             r.name_room AS phongHoc
-           FROM [session] s
-           JOIN timeslot ts ON ts.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS
-           JOIN room r ON r.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS
-           WHERE s.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @classId COLLATE SQL_Latin1_General_CP1_CI_AS
-           ORDER BY s.study_date, ts.shift_no`
-        );
-      }
+    const pool = await safeGetPool('HQHD');
+    const request = createRequest('HQHD', null, pool);
+    request.input('classId', ID_TYPE, classId);
+    request.input('headquarterId', ID_TYPE, getHeadquarterId(maCS) ?? maCS);
+    const result = await request.query(
+      `SELECT 
+         s.ID_session AS ID_session,
+         s.study_date AS ngayHoc,
+         s.day_of_week AS thuHoc,
+         s.note AS ghiChu,
+         ts.shift_no AS caHoc,
+         ts.start_time AS gioStart,
+         ts.end_time AS gioEnd,
+         r.name_room AS phongHoc
+       FROM [session] s
+       JOIN [class] c ON c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN timeslot ts ON ts.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN room r ON r.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS
+       WHERE s.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @classId COLLATE SQL_Latin1_General_CP1_CI_AS
+         AND h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = @headquarterId COLLATE SQL_Latin1_General_CP1_CI_AS
+       ORDER BY s.study_date, ts.shift_no`
     );
 
     return res.json({

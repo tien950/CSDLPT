@@ -1,5 +1,7 @@
 export const API_LOCAL =
   import.meta.env.VITE_API_LOCAL || 'http://localhost:4000';
+export const API_GATEWAY =
+  import.meta.env.VITE_API_HQHD || API_LOCAL;
 
 export const API_BY_CAMPUS = {
   HQHD: import.meta.env.VITE_API_HQHD || 'http://26.28.246.97:4000',
@@ -100,6 +102,36 @@ export async function apiFetch(path, maCS, options = {}) {
 
   if (!res.ok) {
     throw new Error(data?.message || 'Không thể lấy dữ liệu từ cơ sở.');
+  }
+
+  return data;
+}
+
+export async function gatewayFetch(path, options = {}) {
+  const token = getToken();
+
+  if (!token) {
+    throw new Error('Thiếu token đăng nhập.');
+  }
+
+  const requestOptions = normalizeJsonBody(options);
+
+  const res = await fetchWithTimeout(`${API_GATEWAY}${path}`, {
+    ...requestOptions,
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      Pragma: 'no-cache',
+      ...(requestOptions.headers || {}),
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error(data?.message || 'Không thể lấy dữ liệu từ máy chủ HQHD.');
   }
 
   return data;

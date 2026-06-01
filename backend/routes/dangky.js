@@ -6,6 +6,7 @@ import { authenticate, requireRole } from '../middleware/auth.js';
 import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 import { clearStudentCache } from '../utils/queryCache.js';
 import { callRemoteNode } from '../utils/remoteApi.js';
+import { fetchNodeApiJson, getProxyHeaders, isProxyRequest } from '../utils/nodeProxy.js';
 const router = express.Router();
 const ID_TYPE = sql.NVarChar(50);
 function sendError(res, error) {
@@ -224,7 +225,10 @@ async function fetchAvailableClassesByCampus(nodeKey, options = {}) {
   }
 }
 async function getClassById(nodeKey, classId) {
-  if (normalizeNodeKey(nodeKey) !== normalizeNodeKey(LOCAL_NODE)) {
+  const normalizedNode = normalizeNodeKey(nodeKey);
+  const shouldQueryLocal = LOCAL_NODE === 'HQHD' || normalizedNode === normalizeNodeKey(LOCAL_NODE);
+
+  if (!shouldQueryLocal) {
     const remote = await callRemoteNode(nodeKey, 'GET', `/api/dangky/internal/lophocphan/${encodeURIComponent(classId)}`, null, null);
     if (!remote.ok) {
       const error = new Error(remote.data?.message ?? 'Không lấy được thông tin lớp học phần.');
@@ -234,9 +238,10 @@ async function getClassById(nodeKey, classId) {
     }
     return remote.data?.data ?? null;
   }
-  const pool = await safeGetPool(nodeKey);
-  const request = createRequest(nodeKey, null, pool);
+  const pool = await safeGetPool(LOCAL_NODE);
+  const request = createRequest(LOCAL_NODE, null, pool);
   request.input('classId', ID_TYPE, classId);
+  request.input('headquarterId', ID_TYPE, getHeadquarterId(normalizedNode) ?? normalizedNode ?? LOCAL_NODE);
   const result = await request.query(
     `SELECT
        c.ID_class AS ID_class,
@@ -251,6 +256,7 @@ async function getClassById(nodeKey, classId) {
      JOIN department d ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
      JOIN headquarter h ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
      WHERE c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @classId COLLATE SQL_Latin1_General_CP1_CI_AS`
+      + ` AND h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = @headquarterId COLLATE SQL_Latin1_General_CP1_CI_AS`
   );
   return result.recordset[0] ?? null;
 }
@@ -284,6 +290,34 @@ async function updateLocalEnrollment(nodeKey, classId, delta) {
   await request.query(updateSql);
 }
 
+async function proxyCrossRegistrationToHqhd(req, res) {
+  if (LOCAL_NODE === 'HQHD' || isProxyRequest(req)) {
+    return null;
+  }
+
+  try {
+    const proxyResult = await fetchNodeApiJson('HQHD', '/api/dangky', {
+      method: 'POST',
+      body: req.body ?? {},
+      headers: getProxyHeaders(req)
+    });
+    return res.status(proxyResult.status).json(proxyResult.data);
+  } catch (error) {
+    return sendError(res, error);
+  }
+}
+
+async function registerCrossCampusOnHqhd(studentId, classId) {
+  const pool = await safeGetPool('HQHD');
+  const regId = await generateRegId(pool, 'HQHD');
+  const request = createRequest('HQHD', null, pool);
+  request.input('ID_registration', ID_TYPE, regId);
+  request.input('ID_student', ID_TYPE, studentId);
+  request.input('ID_class', ID_TYPE, classId);
+  await request.execute('usp_RegisterCrossCampusClass');
+  return regId;
+}
+
 function parseAvailableFilters(query = {}) {
   const termId = query.ID_term ?? null;
   const subjectId = query.ID_subject ?? null;
@@ -304,13 +338,13 @@ function parseAvailableFilters(query = {}) {
 }
 
 async function fetchAvailableClassesFromNode(nodeKey, filters, authToken) {
-  if (normalizeNodeKey(nodeKey) === normalizeNodeKey(LOCAL_NODE)) {
+  if (LOCAL_NODE === 'HQHD' || normalizeNodeKey(nodeKey) === normalizeNodeKey(LOCAL_NODE)) {
     const rawRows = await fetchAvailableClassesByCampus(LOCAL_NODE, {
       termId: filters.termId,
       subjectId: filters.subjectId,
-      headquarterId: getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE
+      headquarterId: getHeadquarterId(nodeKey) ?? nodeKey
     });
-    return rawRows.map(row => normalizeAvailableClassRow(row, LOCAL_NODE));
+    return rawRows.map(row => normalizeAvailableClassRow(row, nodeKey));
   }
 
   const remotePath = buildRemotePath('/api/dangky/internal/lophocphan', {
@@ -426,37 +460,20 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
       return sendError(res, error);
     }
   }
-  console.log('[2PC] Phase 1: PREPARE', LOCAL_NODE, '->', maCSLopNormalized);
+  const proxied = await proxyCrossRegistrationToHqhd(req, res);
+  if (proxied) {
+    return proxied;
+  }
+
   try {
-    const pool = await safeGetPool(LOCAL_NODE);
-    const checkRequest = createRequest(LOCAL_NODE, null, pool);
-    checkRequest.input('ID_student', ID_TYPE, maSV);
-    checkRequest.input('ID_class', ID_TYPE, maLop);
-    checkRequest.input('ID_headquarter', ID_TYPE, headquarterStudent);
-    const checkResult = await checkRequest.execute('usp_CheckRegisterCondition');
-    if (!checkResult.recordset[0]?.is_valid) {
-      return res.status(400).json({ success: false, message: checkResult.recordset[0]?.message || 'Không thể đăng ký lớp này.' });
-    }
-    regId = await generateRegId(pool, LOCAL_NODE);
-    await registerLocal(LOCAL_NODE, regId, maSV, maLop, headquarterStudent);
-    console.log('[2PC] Phase 2: COMMIT', LOCAL_NODE, '->', maCSLopNormalized);
-    const remoteUpdate = await callRemoteNode(maCSLopNormalized, 'PUT', `/api/dangky/internal/lophocphan/${encodeURIComponent(maLop)}/enrollment`, null, req.headers.authorization);
-    if (!remoteUpdate.ok) {
-      throw new Error(remoteUpdate.data?.message || 'Không thể cập nhật sĩ số lớp học phần.');
-    }
+    regId = await registerCrossCampusOnHqhd(maSV, maLop);
     clearStudentCache(maSV, LOCAL_NODE);
-    return res.json({ success: true, data: { maDangKy: regId, maSV, maLop, maCS: LOCAL_NODE, maCSLop: maCSLopNormalized } });
-  } catch (error) {
-    console.log('[2PC] ROLLBACK — reason:', error.message);
-    if (regId) {
-      await deleteLocalRegistration(LOCAL_NODE, regId).catch(() => undefined);
-    }
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Không thể hoàn tất đăng ký lớp học phần.',
-      node: maCSLopNormalized,
-      offline: Boolean(error.offline)
+    return res.json({
+      success: true,
+      data: { maDangKy: regId, maSV, maLop, maCS, maCSLop: maCSLopNormalized, gateway: 'HQHD' }
     });
+  } catch (error) {
+    return sendError(res, error);
   }
 });
 router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res) => {

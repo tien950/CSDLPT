@@ -9,8 +9,8 @@ import ThongKe from './pages/QuanTri/ThongKe.jsx';
 const STORAGE_KEY = 'csdlpt.auth';
 
 const campusLabels = {
-  HQHD: 'Hà Đông',
-  HQHL: 'Hòa Lạc',
+  HQHD: 'Ha Dong',
+  HQHL: 'Hoa Lac',
   HQHCM: 'TP. HCM',
 };
 
@@ -18,15 +18,8 @@ function normalizeLoginData(data) {
   const loginData = data?.data ?? data;
   const token = loginData?.token;
   const user = loginData?.user ?? loginData;
-
-  if (!token || !user) {
-    return null;
-  }
-
-  return {
-    token,
-    user,
-  };
+  if (!token || !user) return null;
+  return { token, user };
 }
 
 function loadAuth() {
@@ -37,27 +30,15 @@ function loadAuth() {
       if (auth?.token && auth?.user) {
         localStorage.setItem('token', auth.token);
         localStorage.setItem('user', JSON.stringify(auth.user));
-        localStorage.setItem(
-          'userNode',
-          auth.user.maCS ?? auth.user.ID_headquarter ?? '',
-        );
+        localStorage.setItem('userNode', auth.user.maCS ?? auth.user.ID_headquarter ?? '');
         return auth;
       }
     }
 
     const token = localStorage.getItem('token');
     const userRaw = localStorage.getItem('user');
-
-    if (!token || !userRaw) {
-      return null;
-    }
-
-    const user = JSON.parse(userRaw);
-
-    return {
-      token,
-      user,
-    };
+    if (!token || !userRaw) return null;
+    return { token, user: JSON.parse(userRaw) };
   } catch {
     return null;
   }
@@ -71,13 +52,30 @@ function saveAuth(auth) {
     localStorage.removeItem('userNode');
     return;
   }
-
   localStorage.setItem(STORAGE_KEY, JSON.stringify(auth));
   localStorage.setItem('token', auth.token);
   localStorage.setItem('user', JSON.stringify(auth.user));
-  localStorage.setItem(
-    'userNode',
-    auth.user.maCS ?? auth.user.ID_headquarter ?? '',
+  localStorage.setItem('userNode', auth.user.maCS ?? auth.user.ID_headquarter ?? '');
+}
+
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '12px 20px',
+        backgroundColor: active ? '#1976d2' : 'transparent',
+        color: active ? 'white' : '#666',
+        border: 'none',
+        borderBottom: active ? '3px solid #1976d2' : 'none',
+        cursor: 'pointer',
+        fontSize: '1rem',
+        fontWeight: active ? 'bold' : 'normal',
+        transition: 'all 0.3s',
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -85,14 +83,9 @@ export default function App() {
   const [auth, setAuth] = useState(() => loadAuth());
   const [currentPage, setCurrentPage] = useState('danh-sach-dang-ky');
 
-  const handleLogin = (data) => {
+  const handleLogin = data => {
     const nextAuth = normalizeLoginData(data);
-
-    if (!nextAuth) {
-      console.error('Dữ liệu đăng nhập không hợp lệ:', data);
-      return;
-    }
-
+    if (!nextAuth) return;
     saveAuth(nextAuth);
     setAuth(nextAuth);
   };
@@ -104,204 +97,88 @@ export default function App() {
   };
 
   const user = auth?.user;
+  const isCentralAdmin = user?.role === 'quantrivien' && user?.maCS === 'HQHD';
 
   useEffect(() => {
     if (!user?.role) return;
-
     if (user.role === 'sinhvien') {
       setCurrentPage('danh-sach-dang-ky');
-    } else if (user.role === 'quantrivien') {
-      setCurrentPage('giam-sat-node');
-    } else if (user.role === 'nhanvien') {
-      setCurrentPage('quan-ly-du-lieu');
-    } else {
-      setCurrentPage('thong-ke');
+      return;
     }
-  }, [user?.role]);
+    if (user.role === 'quantrivien') {
+      setCurrentPage(isCentralAdmin ? 'giam-sat-co-so' : 'quan-ly-du-lieu');
+      return;
+    }
+    if (user.role === 'nhanvien') {
+      setCurrentPage('quan-ly-du-lieu');
+      return;
+    }
+    setCurrentPage('thong-ke');
+  }, [user?.role, isCentralAdmin]);
 
   if (!auth?.token || !user) {
     return <Login onLogin={handleLogin} />;
   }
 
   const campusCode = user.maCS ?? user.ID_headquarter;
-  const campusName = campusLabels[campusCode] ?? campusCode ?? 'Không xác định';
+  const campusName = campusLabels[campusCode] ?? campusCode ?? 'Khong xac dinh';
 
   return (
     <div className="app">
       <header className="app-header">
         <div>
-          <h1>Hệ thống đăng ký học phần</h1>
+          <h1>He thong dang ky hoc phan</h1>
           <p className="subtitle">
-            Xin chào {user.username ?? user.id ?? user.ID_user} • {user.role} •{' '}
-            {campusName}
+            Xin chao {user.username ?? user.id ?? user.ID_user} • {user.role} • {campusName}
           </p>
         </div>
         <button type="button" className="secondary" onClick={handleLogout}>
-          Đăng xuất
+          Dang xuat
         </button>
       </header>
 
       {user.role === 'sinhvien' && (
         <>
-          <div
-            style={{
-              display: 'flex',
-              gap: '1rem',
-              marginBottom: '1.5rem',
-              borderBottom: '2px solid #f0f0f0',
-            }}
-          >
-            <button
-              onClick={() => setCurrentPage('danh-sach-dang-ky')}
-              style={{
-                padding: '12px 20px',
-                backgroundColor:
-                  currentPage === 'danh-sach-dang-ky'
-                    ? '#1976d2'
-                    : 'transparent',
-                color: currentPage === 'danh-sach-dang-ky' ? 'white' : '#666',
-                border: 'none',
-                borderBottom:
-                  currentPage === 'danh-sach-dang-ky'
-                    ? '3px solid #1976d2'
-                    : 'none',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                fontWeight:
-                  currentPage === 'danh-sach-dang-ky' ? 'bold' : 'normal',
-                transition: 'all 0.3s',
-              }}
-            >
-              Danh Sách Đăng Ký
-            </button>
-
-            <button
-              onClick={() => setCurrentPage('thoi-khoa-bieu')}
-              style={{
-                padding: '12px 20px',
-                backgroundColor:
-                  currentPage === 'thoi-khoa-bieu' ? '#1976d2' : 'transparent',
-                color: currentPage === 'thoi-khoa-bieu' ? 'white' : '#666',
-                border: 'none',
-                borderBottom:
-                  currentPage === 'thoi-khoa-bieu'
-                    ? '3px solid #1976d2'
-                    : 'none',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                fontWeight:
-                  currentPage === 'thoi-khoa-bieu' ? 'bold' : 'normal',
-                transition: 'all 0.3s',
-              }}
-            >
-              Thời Khóa Biểu
-            </button>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '2px solid #f0f0f0' }}>
+            <TabButton active={currentPage === 'danh-sach-dang-ky'} onClick={() => setCurrentPage('danh-sach-dang-ky')}>
+              Danh Sach Dang Ky
+            </TabButton>
+            <TabButton active={currentPage === 'thoi-khoa-bieu'} onClick={() => setCurrentPage('thoi-khoa-bieu')}>
+              Thoi Khoa Bieu
+            </TabButton>
           </div>
-
-          {currentPage === 'danh-sach-dang-ky' && (
-            <DanhSachDangKy user={user} />
-          )}
+          {currentPage === 'danh-sach-dang-ky' && <DanhSachDangKy user={user} />}
           {currentPage === 'thoi-khoa-bieu' && <XemThoiKhoaBieu user={user} />}
         </>
       )}
 
       {(user.role === 'quantrivien' || user.role === 'nhanvien') && (
         <>
-          <div
-            style={{
-              display: 'flex',
-              gap: '1rem',
-              marginBottom: '1.5rem',
-              borderBottom: '2px solid #f0f0f0',
-            }}
-          >
-            {user.role === 'quantrivien' && (
-              <button
-                onClick={() => setCurrentPage('giam-sat-node')}
-                style={{
-                  padding: '12px 20px',
-                  backgroundColor:
-                    currentPage === 'giam-sat-node' ? '#1976d2' : 'transparent',
-                  color: currentPage === 'giam-sat-node' ? 'white' : '#666',
-                  border: 'none',
-                  borderBottom:
-                    currentPage === 'giam-sat-node'
-                      ? '3px solid #1976d2'
-                      : 'none',
-                  cursor: 'pointer',
-                  fontSize: '1rem',
-                  fontWeight:
-                    currentPage === 'giam-sat-node' ? 'bold' : 'normal',
-                  transition: 'all 0.3s',
-                }}
-              >
-                Giám Sát Node
-              </button>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '2px solid #f0f0f0' }}>
+            {isCentralAdmin && (
+              <TabButton active={currentPage === 'giam-sat-co-so'} onClick={() => setCurrentPage('giam-sat-co-so')}>
+                Giam Sat Co So
+              </TabButton>
             )}
-
-            <button
-              onClick={() => setCurrentPage('quan-ly-du-lieu')}
-              style={{
-                padding: '12px 20px',
-                backgroundColor:
-                  currentPage === 'quan-ly-du-lieu' ? '#1976d2' : 'transparent',
-                color: currentPage === 'quan-ly-du-lieu' ? 'white' : '#666',
-                border: 'none',
-                borderBottom:
-                  currentPage === 'quan-ly-du-lieu'
-                    ? '3px solid #1976d2'
-                    : 'none',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                fontWeight:
-                  currentPage === 'quan-ly-du-lieu' ? 'bold' : 'normal',
-                transition: 'all 0.3s',
-              }}
-            >
-              Quản Lý Dữ Liệu
-            </button>
-
-            <button
-              onClick={() => setCurrentPage('thong-ke')}
-              style={{
-                padding: '12px 20px',
-                backgroundColor:
-                  currentPage === 'thong-ke' ? '#1976d2' : 'transparent',
-                color: currentPage === 'thong-ke' ? 'white' : '#666',
-                border: 'none',
-                borderBottom:
-                  currentPage === 'thong-ke' ? '3px solid #1976d2' : 'none',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                fontWeight: currentPage === 'thong-ke' ? 'bold' : 'normal',
-                transition: 'all 0.3s',
-              }}
-            >
-              Thống Kê
-            </button>
+            <TabButton active={currentPage === 'quan-ly-du-lieu'} onClick={() => setCurrentPage('quan-ly-du-lieu')}>
+              Quan Ly Du Lieu
+            </TabButton>
+            <TabButton active={currentPage === 'thong-ke'} onClick={() => setCurrentPage('thong-ke')}>
+              Thong Ke
+            </TabButton>
           </div>
 
-          {currentPage === 'giam-sat-node' && user.role === 'quantrivien' && (
-            <GiamSatNode user={user} />
-          )}
-
+          {currentPage === 'giam-sat-co-so' && isCentralAdmin && <GiamSatNode user={user} />}
           {currentPage === 'quan-ly-du-lieu' && <QuanLyDuLieu user={user} />}
-
           {currentPage === 'thong-ke' && <ThongKe user={user} />}
         </>
       )}
 
-      {user.role !== 'sinhvien' &&
-        user.role !== 'quantrivien' &&
-        user.role !== 'nhanvien' && (
-          <section className="card">
-            <h2>Chưa có giao diện cho vai trò này</h2>
-            <p>
-              Vui lòng đăng nhập bằng tài khoản sinh viên, nhân viên hoặc quản
-              trị viên.
-            </p>
-          </section>
-        )}
+      {user.role !== 'sinhvien' && user.role !== 'quantrivien' && user.role !== 'nhanvien' && (
+        <section className="card">
+          <h2>Chua co giao dien cho vai tro nay</h2>
+        </section>
+      )}
     </div>
   );
 }

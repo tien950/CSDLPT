@@ -28,6 +28,20 @@ export const demoUsers = [
     maCS: 'HQHD'
   },
   {
+    id: 'GVHL01',
+    username: 'gv_hl_01',
+    password: 'gv123',
+    role: 'giangvien',
+    maCS: 'HQHL'
+  },
+  {
+    id: 'GVHCM01',
+    username: 'gv_hcm_01',
+    password: 'gv123',
+    role: 'giangvien',
+    maCS: 'HQHCM'
+  },
+  {
     id: 'NVHL01',
     username: 'nv_hl_01',
     password: 'nv123',
@@ -54,6 +68,20 @@ export const demoUsers = [
     password: 'qtv123',
     role: 'quantrivien',
     maCS: 'HQHD'
+  },
+  {
+    id: 'QTVHL01',
+    username: 'qtv_hl_01',
+    password: 'qtv123',
+    role: 'quantrivien',
+    maCS: 'HQHL'
+  },
+  {
+    id: 'QTVHCM01',
+    username: 'qtv_hcm_01',
+    password: 'qtv123',
+    role: 'quantrivien',
+    maCS: 'HQHCM'
   }
 ];
 

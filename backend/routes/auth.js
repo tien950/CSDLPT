@@ -1,7 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { findDemoUser } from '../config/demo-users.js';
-import { LOCAL_NODE } from '../config/nodes.js';
+import { LOCAL_NODE, normalizeNodeKey } from '../config/nodes.js';
 
 const router = express.Router();
 
@@ -30,6 +30,26 @@ router.post('/login', (req, res) => {
     return res.status(401).json({
       success: false,
       message: 'Sai tài khoản hoặc mật khẩu.'
+    });
+  }
+
+  const backendNode = normalizeNodeKey(LOCAL_NODE);
+  const userNode = normalizeNodeKey(user.maCS);
+
+  if (!backendNode) {
+    return res.status(500).json({
+      success: false,
+      message: 'LOCAL_NODE chưa được cấu hình hợp lệ.'
+    });
+  }
+
+  // Non-HQHD backends only allow users from the same campus.
+  if (backendNode !== 'HQHD' && userNode !== backendNode) {
+    return res.status(403).json({
+      success: false,
+      message: `Tài khoản thuộc ${userNode} phải đăng nhập đúng backend ${userNode}. Backend hiện tại là ${backendNode}.`,
+      requiredNode: userNode,
+      backendNode
     });
   }
 

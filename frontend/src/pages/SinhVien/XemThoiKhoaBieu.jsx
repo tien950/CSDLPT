@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '../../config/api.js';
+import { gatewayFetch } from '../../config/api.js';
 
 function formatDate(dateStr) {
   if (!dateStr) return '-';
@@ -97,7 +97,7 @@ export default function XemThoiKhoaBieu({ user }) {
     setLoading(true);
     setError('');
     try {
-      const data = await apiFetch('/api/sinhvien/schedule', user?.maCS ?? 'HQHD');
+      const data = await gatewayFetch('/api/sinhvien/schedule');
 
       if (!data?.success) {
         setError(data?.message || 'Không thể tải thời khóa biểu.');

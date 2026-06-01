@@ -28,7 +28,9 @@ function sendError(res, error) {
 function resolveNode(req) {
   const requested = normalizeNodeKey(req.query.maCS ?? req.query.ID_headquarter ?? req.body?.ID_headquarter);
   const userNode = normalizeNodeKey(req.user?.maCS);
-  if (req.user?.role === 'quantrivien' && requested && isValidNode(requested)) {
+  const localNode = normalizeNodeKey(LOCAL_NODE);
+  const isHqhdGlobalAdmin = req.user?.role === 'quantrivien' && userNode === 'HQHD' && localNode === 'HQHD';
+  if (isHqhdGlobalAdmin && requested && isValidNode(requested)) {
     return requested;
   }
   return userNode;
