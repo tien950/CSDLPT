@@ -6,6 +6,7 @@ export const API_BY_CAMPUS = {
   HQHL: import.meta.env.VITE_API_HQHL || 'http://26.54.47.104:4000',
   HQHCM: import.meta.env.VITE_API_HQHCM || 'http://26.213.180.63:4000',
 };
+const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 12000);
 
 export function getApiBase(maCS) {
   return API_BY_CAMPUS[maCS] || API_LOCAL;
@@ -32,10 +33,28 @@ function normalizeJsonBody(options) {
   return options;
 }
 
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`Quá thời gian chờ API (${API_TIMEOUT_MS}ms).`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function authFetch(path, options = {}) {
   const requestOptions = normalizeJsonBody(options);
 
-  const res = await fetch(`${API_LOCAL}${path}`, {
+  const res = await fetchWithTimeout(`${API_LOCAL}${path}`, {
     ...requestOptions,
     headers: {
       'Content-Type': 'application/json',
@@ -62,7 +81,7 @@ export async function apiFetch(path, maCS, options = {}) {
   const apiBase = getApiBase(maCS);
   const requestOptions = normalizeJsonBody(options);
 
-  const res = await fetch(`${apiBase}${path}`, {
+  const res = await fetchWithTimeout(`${apiBase}${path}`, {
     ...requestOptions,
     headers: {
       'Content-Type': 'application/json',
