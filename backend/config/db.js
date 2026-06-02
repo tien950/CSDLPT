@@ -4,8 +4,11 @@ import { LOCAL_NODE, localDbConfig } from './nodes.js';
 const poolCache = new Map();
 const poolTimestamps = new Map(); // Track when pools were created
 const DEFAULT_CONNECTION_TIMEOUT_MS = 5000;
-const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
 const DEFAULT_CANCEL_TIMEOUT_MS = 5000;
+const DEFAULT_POOL_MAX = 30;
+const DEFAULT_POOL_MIN = 2;
+const DEFAULT_POOL_IDLE_TIMEOUT_MS = 300000;
 
 function getTimeoutEnv(name, fallback) {
   const value = Number(process.env[name]);
@@ -25,27 +28,35 @@ function validateLocalDbConfig() {
 }
 
 function buildLocalConfig() {
+  const connectionTimeout = getTimeoutEnv('DB_CONNECTION_TIMEOUT_MS', DEFAULT_CONNECTION_TIMEOUT_MS);
+  const requestTimeout = getTimeoutEnv('DB_REQUEST_TIMEOUT_MS', DEFAULT_REQUEST_TIMEOUT_MS);
+  const cancelTimeout = getTimeoutEnv('DB_CANCEL_TIMEOUT_MS', DEFAULT_CANCEL_TIMEOUT_MS);
   const config = {
     server: localDbConfig.server,
     database: localDbConfig.database,
     user: localDbConfig.user,
     password: localDbConfig.password,
+    connectionTimeout,
+    requestTimeout,
     pool: {
-      max: 20,
-      min: 0,
-      idleTimeoutMillis: 30000
+      max: getTimeoutEnv('DB_POOL_MAX', DEFAULT_POOL_MAX),
+      min: getTimeoutEnv('DB_POOL_MIN', DEFAULT_POOL_MIN),
+      idleTimeoutMillis: getTimeoutEnv('DB_POOL_IDLE_TIMEOUT_MS', DEFAULT_POOL_IDLE_TIMEOUT_MS)
     },
     options: {
       encrypt: false,
       trustServerCertificate: true,
-      connectionTimeout: getTimeoutEnv('DB_CONNECTION_TIMEOUT_MS', DEFAULT_CONNECTION_TIMEOUT_MS),
-      requestTimeout: getTimeoutEnv('DB_REQUEST_TIMEOUT_MS', DEFAULT_REQUEST_TIMEOUT_MS),
-      cancelTimeout: getTimeoutEnv('DB_CANCEL_TIMEOUT_MS', DEFAULT_CANCEL_TIMEOUT_MS),
-      ...(localDbConfig.instanceName ? { instanceName: localDbConfig.instanceName } : {})
+      cancelTimeout
     }
   };
 
+  if (Number.isInteger(localDbConfig.port) && localDbConfig.port > 0) {
+    config.port = localDbConfig.port;
+    return config;
+  }
+
   if (localDbConfig.instanceName) {
+    config.options.instanceName = localDbConfig.instanceName;
     return config;
   }
 

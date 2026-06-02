@@ -489,9 +489,19 @@ router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res)
     verifyReq.input('ID_registration', ID_TYPE, maDangKy);
     verifyReq.input('ID_student', ID_TYPE, maSV);
     const verifyResult = await verifyReq.query(
-      `SELECT ID_class, registration_status FROM registration
-       WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS
-         AND ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
+      `SELECT
+         r.ID_class,
+         r.registration_status,
+         d.ID_headquarter AS class_headquarter
+       FROM registration r
+       LEFT JOIN [class] c
+         ON r.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS
+       LEFT JOIN teacher t
+         ON c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+       LEFT JOIN department d
+         ON t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+       WHERE r.ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS
+         AND r.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
     );
     if (verifyResult.recordset.length === 0) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy đăng ký.' });
@@ -501,7 +511,7 @@ router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res)
     }
     const cancelReq = createRequest(LOCAL_NODE, null, pool);
     cancelReq.input('ID_registration', ID_TYPE, maDangKy);
-    cancelReq.input('ID_headquarter', ID_TYPE, getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE);
+    cancelReq.input('ID_headquarter', ID_TYPE, verifyResult.recordset[0].class_headquarter ?? getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE);
     await cancelReq.execute('usp_CancelRegistration');
     clearStudentCache(maSV, LOCAL_NODE);
     return res.json({ success: true, message: 'Hủy đăng ký thành công.' });

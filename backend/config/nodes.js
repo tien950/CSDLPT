@@ -9,6 +9,7 @@ export const localDbConfig = {
   server: process.env.LOCAL_SERVER ?? null,
   database: process.env.LOCAL_DATABASE ?? null,
   instanceName: process.env.LOCAL_INSTANCE ?? null,
+  port: process.env.LOCAL_PORT ? Number(process.env.LOCAL_PORT) : null,
   user: process.env.LOCAL_USER ?? null,
   password: process.env.LOCAL_PASSWORD ?? null,
   options: {

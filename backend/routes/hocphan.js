@@ -338,6 +338,85 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
   }
 });
 
+router.get('/schedules', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  const maCS = normalizeNodeKey(req.query.maCS) || normalizeNodeKey(req.user?.maCS);
+  const classIds = String(req.query.classIds ?? '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+
+  if (!maCS || !isValidNode(maCS) || classIds.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Thiáº¿u thÃ´ng tin.'
+    });
+  }
+
+  const proxyResponse = await proxyToHqhd(req, res, maCS);
+  if (proxyResponse) {
+    return proxyResponse;
+  }
+
+  try {
+    const pool = await safeGetPool(LOCAL_NODE);
+    const request = createRequest(LOCAL_NODE, null, pool);
+    request.input('headquarterId', ID_TYPE, getHeadquarterId(maCS) ?? maCS);
+    const classParams = classIds.map((classId, index) => {
+      const paramName = `class_${index}`;
+      request.input(paramName, ID_TYPE, classId);
+      return `@${paramName}`;
+    });
+
+    const result = await request.query(
+      `SELECT
+         s.ID_class AS maMH,
+         s.ID_session AS ID_session,
+         s.study_date AS ngayHoc,
+         s.day_of_week AS thuHoc,
+         s.note AS ghiChu,
+         ts.shift_no AS caHoc,
+         ts.start_time AS gioStart,
+         ts.end_time AS gioEnd,
+         r.name_room AS phongHoc
+       FROM [session] s WITH (NOLOCK)
+       JOIN [class] c WITH (NOLOCK)
+         ON c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN teacher t WITH (NOLOCK)
+         ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN department d WITH (NOLOCK)
+         ON d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN headquarter h WITH (NOLOCK)
+         ON h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN timeslot ts WITH (NOLOCK)
+         ON ts.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS
+       JOIN room r WITH (NOLOCK)
+         ON r.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS = s.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS
+       WHERE s.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS IN (${classParams.join(', ')})
+         AND h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = @headquarterId COLLATE SQL_Latin1_General_CP1_CI_AS
+       ORDER BY s.ID_class, s.study_date, ts.shift_no`
+    );
+
+    const grouped = {};
+    normalizeRows(result).forEach(row => {
+      const classId = row.maMH;
+      if (!classId) return;
+      if (!grouped[classId]) grouped[classId] = [];
+      grouped[classId].push(row);
+    });
+
+    classIds.forEach(classId => {
+      if (!grouped[classId]) grouped[classId] = [];
+    });
+
+    return res.json({
+      success: true,
+      data: grouped
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
 router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const maCS = normalizeNodeKey(req.query.maCS) || normalizeNodeKey(req.user?.maCS);
   const { classId } = req.params;

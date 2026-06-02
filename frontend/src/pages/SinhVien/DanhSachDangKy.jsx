@@ -1,28 +1,9 @@
 import { useEffect, useState } from 'react';
 import { apiFetch, gatewayFetch } from '../../config/api.js';
 
-const SCHEDULE_CONCURRENCY = 6;
-
 function formatDate(dateStr) {
   if (!dateStr) return '-';
   return new Date(dateStr).toLocaleDateString('vi-VN');
-}
-
-async function mapWithConcurrency(items, mapper, concurrency = SCHEDULE_CONCURRENCY) {
-  const results = new Array(items.length);
-  let cursor = 0;
-
-  async function worker() {
-    while (cursor < items.length) {
-      const index = cursor;
-      cursor += 1;
-      results[index] = await mapper(items[index], index);
-    }
-  }
-
-  const workerCount = Math.min(concurrency, items.length);
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
-  return results;
 }
 
 function formatTime(timeStr) {
@@ -117,22 +98,17 @@ export default function DanhSachDangKy({ user }) {
         const availableClasses = availData.data || [];
         setAvailable(availableClasses);
         if (availableClasses.length > 0) {
-          const scheduleEntries = await mapWithConcurrency(
-            availableClasses,
-            async cls => {
-              try {
-                const path = `/api/hocphan/schedule/${cls.maMH}?maCS=${maCS}`;
-                const scheduleData = useGateway
-                  ? await gatewayFetch(path)
-                  : await apiFetch(path, maCS);
-                return [cls.maMH, scheduleData?.success ? scheduleData.data : []];
-              } catch {
-                return [cls.maMH, []];
-              }
-            },
-            SCHEDULE_CONCURRENCY
-          );
-          setSchedules(Object.fromEntries(scheduleEntries));
+          const classIds = availableClasses.map(cls => cls.maMH).filter(Boolean);
+          const emptySchedules = Object.fromEntries(classIds.map(classId => [classId, []]));
+          try {
+            const path = `/api/hocphan/schedules?maCS=${encodeURIComponent(maCS)}&classIds=${encodeURIComponent(classIds.join(','))}`;
+            const scheduleData = useGateway
+              ? await gatewayFetch(path)
+              : await apiFetch(path, maCS);
+            setSchedules(scheduleData?.success ? { ...emptySchedules, ...(scheduleData.data || {}) } : emptySchedules);
+          } catch {
+            setSchedules(emptySchedules);
+          }
         }
       }
 
@@ -202,8 +178,8 @@ export default function DanhSachDangKy({ user }) {
       } else {
         alert(data.message || 'Hủy đăng ký thất bại.');
       }
-    } catch {
-      alert('Có lỗi khi hủy đăng ký.');
+    } catch (err) {
+      alert(err.message || 'Có lỗi khi hủy đăng ký.');
     } finally {
       setCancelling(null);
     }
