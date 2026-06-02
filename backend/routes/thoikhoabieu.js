@@ -32,7 +32,7 @@ async function safeGetPool(nodeKey) {
   }
 }
 
-router.get('/', authenticate, requireRole(['sinhvien', 'nhanvien', 'quantrivien', 'giangvien']), async (req, res) => {
+router.get('/', authenticate, requireRole(['sinhvien', 'quantrivien', 'giangvien']), async (req, res) => {
   const role = req.user?.role;
   let studentId = req.query.ID_student;
   let headquarterId = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS);

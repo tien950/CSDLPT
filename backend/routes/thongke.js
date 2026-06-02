@@ -513,7 +513,7 @@ router.get('/internal/overview', authenticate, async (req, res) => {
   }
 });
 
-router.get('/overview', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.get('/overview', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const role = req.user?.role;
   const requestedNode = normalizeNodeKey(req.query.maCS);
   const scope = req.query.scope ?? 'all';
@@ -568,7 +568,7 @@ router.get('/overview', authenticate, requireRole(['nhanvien', 'quantrivien']), 
   }
 });
 
-router.get('/lophocphan', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.get('/lophocphan', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const role = req.user?.role;
   const termId = req.query.ID_term ?? null;
   const requestedNode = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS);
@@ -611,7 +611,7 @@ router.get('/lophocphan', authenticate, requireRole(['nhanvien', 'quantrivien'])
   }
 });
 
-router.get('/sinhvien-theo-coso', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.get('/sinhvien-theo-coso', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const headquarterId = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS);
 
   try {

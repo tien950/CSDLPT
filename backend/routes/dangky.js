@@ -592,7 +592,7 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
     return sendError(res, error);
   }
 });
-router.get('/result', authenticate, requireRole(['sinhvien', 'nhanvien', 'quantrivien']), async (req, res) => {
+router.get('/result', authenticate, requireRole(['sinhvien', 'quantrivien']), async (req, res) => {
   const role = req.user?.role;
   let studentId = req.query.ID_student;
   const headquarterId = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS ?? req.user?.maCS) ?? LOCAL_NODE;

@@ -298,7 +298,7 @@ router.get('/node-status', async (req, res) => {
   return res.json({ success: true, nodes });
 });
 
-router.get('/tables', authenticate, requireRole(['nhanvien', 'quantrivien']), (req, res) => {
+router.get('/tables', authenticate, requireRole(['quantrivien']), (req, res) => {
   const tables = Object.entries(ALLOWED_TABLES).map(([key, label]) => ({ key, label }));
   return res.json({
     success: true,
@@ -306,7 +306,7 @@ router.get('/tables', authenticate, requireRole(['nhanvien', 'quantrivien']), (r
   });
 });
 
-router.get('/meta/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.get('/meta/:table', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const table = req.params.table;
   if (!ALLOWED_TABLES[table]) {
     return res.status(404).json({ success: false, message: 'Bảng dữ liệu không hợp lệ.' });
@@ -330,7 +330,7 @@ router.get('/meta/:table', authenticate, requireRole(['nhanvien', 'quantrivien']
   }
 });
 
-router.get('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.get('/:table', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const table = req.params.table;
   if (!ALLOWED_TABLES[table]) {
     return res.status(404).json({ success: false, message: 'Bảng dữ liệu không hợp lệ.' });
@@ -368,7 +368,7 @@ router.get('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), as
   }
 });
 
-router.post('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.post('/:table', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const table = req.params.table;
   if (!ALLOWED_TABLES[table]) {
     return res.status(404).json({ success: false, message: 'Bảng dữ liệu không hợp lệ.' });
@@ -422,7 +422,7 @@ router.post('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), a
   }
 });
 
-router.put('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.put('/:table', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const table = req.params.table;
   if (!ALLOWED_TABLES[table]) {
     return res.status(404).json({ success: false, message: 'Bảng dữ liệu không hợp lệ.' });
@@ -486,7 +486,7 @@ router.put('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), as
   }
 });
 
-router.delete('/:table', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.delete('/:table', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const table = req.params.table;
   if (!ALLOWED_TABLES[table]) {
     return res.status(404).json({ success: false, message: 'Bảng dữ liệu không hợp lệ.' });

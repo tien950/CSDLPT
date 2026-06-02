@@ -432,7 +432,7 @@ router.get('/cross-schedule', authenticate, requireRole(['sinhvien']), async (re
   }
 });
 
-router.get('/', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.get('/', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const nodeKey = resolveNode(req);
   if (!nodeKey) {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
@@ -451,7 +451,7 @@ router.get('/', authenticate, requireRole(['nhanvien', 'quantrivien']), async (r
   }
 });
 
-router.post('/', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.post('/', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const nodeKey = resolveNode(req);
   if (!nodeKey) {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
@@ -470,7 +470,7 @@ router.post('/', authenticate, requireRole(['nhanvien', 'quantrivien']), async (
   }
 });
 
-router.put('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.put('/:id', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const nodeKey = resolveNode(req);
   if (!nodeKey) {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
@@ -489,7 +489,7 @@ router.put('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), async
   }
 });
 
-router.delete('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.delete('/:id', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const nodeKey = resolveNode(req);
   if (!nodeKey) {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });
@@ -579,7 +579,7 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
        message: 'Thiếu thông tin sinh viên trong token.'
      });
 
-      router.get('/timetable', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+      router.get('/timetable', authenticate, requireRole(['quantrivien']), async (req, res) => {
          const nodeKey = resolveNode(req);
          const studentId = req.query.ID_student;
          const headquarterId = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS);
@@ -660,7 +660,7 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
    }
  });
 
-router.get('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+router.get('/:id', authenticate, requireRole(['quantrivien']), async (req, res) => {
   const nodeKey = resolveNode(req);
   if (!nodeKey) {
     return res.status(400).json({ success: false, message: 'Thiếu mã cơ sở.' });

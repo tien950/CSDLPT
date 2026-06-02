@@ -41,7 +41,7 @@ async function proxyIfRemote(req, nodeKey) {
   return await callRemoteNode(nodeKey, req.method, req.originalUrl, req.body ?? null, req.headers.authorization);
 }
 
-router.use(authenticate, requireRole(['nhanvien', 'quantrivien']));
+router.use(authenticate, requireRole(['quantrivien']));
 
 router.get('/', async (req, res) => {
   const nodeKey = resolveNode(req);

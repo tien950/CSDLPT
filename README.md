@@ -52,28 +52,31 @@ cd frontend
 npm install
 ```
 
-### 2. Cấu Hình File `.env`
+### 2. Cấu hình file `.env`
+
+Mỗi máy chỉ cấu hình kết nối database cục bộ của chính máy đó bằng nhóm biến `LOCAL_*`.  
+Các biến `*_API_BASE` dùng để các backend/frontend biết địa chỉ API của các node khác trong hệ thống.
+
+#### Máy chủ Hà Đông
+
 ```env
-# SQL Server IPs
-HQHD_SERVER=26.28.246.97
-HQHL_SERVER=26.54.47.104
-HQHCM_SERVER=26.213.180.63
+LOCAL_NODE=HQHD
+LOCAL_SERVER=26.28.246.97
+LOCAL_INSTANCE=CSDLPT_NHOM7
+LOCAL_DATABASE=DkyTinChi
+LOCAL_USER=sa
+LOCAL_PASSWORD=123456
 
-# Credentials
-HQHD_USER=sa
-HQHD_PASSWORD=your_password
-HQHL_USER=sa
-HQHL_PASSWORD=your_password
-HQHCM_USER=sa
-HQHCM_PASSWORD=your_password
+HQHD_API_BASE=http://26.28.246.97:4000
+HQHL_API_BASE=http://26.54.47.104:4000
+HQHCM_API_BASE=http://26.213.180.63:4000
 
-# JWT Secret
-JWT_SECRET=your_secret_key_here
+VITE_API_LOCAL=http://localhost:4000
+VITE_API_HQHD=http://26.28.246.97:4000
+VITE_API_HQHL=http://26.54.47.104:4000
+VITE_API_HQHCM=http://26.213.180.63:4000
 
-# Optional: backend API base for cross-node proxy (if DB access is not shared)
-# HQHD_API_BASE=http://<ip-hqhd>:4000
-# HQHL_API_BASE=http://<ip-hqhl>:4000
-# HQHCM_API_BASE=http://<ip-hqcm>:4000
+JWT_SECRET=leona3859@
 ```
 
 ### 3. Khởi Động
@@ -96,7 +99,6 @@ Truy cập: **http://localhost:5173**
 | b22attt005 | 123456 | Sinh viên | Hòa Lạc |
 | b22attt001 | 123456 | Sinh viên | TP. Hồ Chí Minh |
 | gv_hd_01 | gv123 | Giảng viên | Hà Đông |
-| nv_hl_01 | nv123 | Nhân viên | Hòa Lạc |
 | qtv_01 | qtv123 | Quản trị viên | Hà Đông |
 
 ## ✅ Yêu Cầu Chức Năng Tối Thiểu
@@ -194,8 +196,7 @@ Phase 2 (ROLLBACK on failure):
 |------|-------------|
 | **sinhvien** | Xem/cập nhật info cá nhân, đăng ký/hủy lớp, xem TKB |
 | **giangvien** | Xem lớp được giao, danh sách sinh viên, TKB dạy |
-| **nhanvien** | Quản lý SV/GV tại cơ sở, mở lớp, xếp lịch, báo cáo |
-| **quantrivien** | Truy cập toàn bộ, quản lý danh mục, giám sát node, báo cáo toàn trường |
+| **quantrivien** | Quản lý dữ liệu tại cơ sở; quản trị viên máy chủ có thêm quyền giám sát node và báo cáo toàn trường |
 
 ## 🛠️ Cấu Trúc Thư Mục
 
@@ -214,7 +215,6 @@ backend/
 │   ├── hocphan.js       - Classes & schedule
 │   ├── sinhvien.js      - Student data
 │   ├── giangvien.js     - Teacher data
-│   ├── nhanvien.js      - Staff data
 │   └── quantrivien.js   - Admin data
 ├── utils/
 │   └── db.js            - Helper functions
@@ -229,7 +229,6 @@ frontend/
 │   │   │   ├── DanhSachDangKy.jsx   - Main registration UI
 │   │   │   └── ThoiKhoaBieu.jsx
 │   │   ├── GiangVien/
-│   │   ├── NhanVien/
 │   │   └── QuanTri/
 │   ├── components/
 │   │   └── NodeStatusBar.jsx - Monitor 3 nodes

@@ -42,27 +42,6 @@ export const demoUsers = [
     maCS: 'HQHCM'
   },
   {
-    id: 'NVHL01',
-    username: 'nv_hl_01',
-    password: 'nv123',
-    role: 'nhanvien',
-    maCS: 'HQHL'
-  },
-  {
-    id: 'NVHD01',
-    username: 'nv_hd_01',
-    password: 'nv123',
-    role: 'nhanvien',
-    maCS: 'HQHD'
-  },
-  {
-    id: 'NVHCM01',
-    username: 'nv_hcm_01',
-    password: 'nv123',
-    role: 'nhanvien',
-    maCS: 'HQHCM'
-  },
-  {
     id: 'QTV01',
     username: 'qtv_01',
     password: 'qtv123',

@@ -7,7 +7,6 @@ const demoGroups = [
     accounts: [
       { role: 'SV', username: 'b22cntt005', password: '123456' },
       { role: 'GV', username: 'gv_hd_01', password: 'gv123' },
-      { role: 'NV', username: 'nv_hd_01', password: 'nv123' },
       { role: 'ADMIN', username: 'qtv_01', password: 'qtv123' },
     ],
   },
@@ -16,7 +15,6 @@ const demoGroups = [
     accounts: [
       { role: 'SV', username: 'b22attt005', password: '123456' },
       { role: 'GV', username: 'gv_hl_01', password: 'gv123' },
-      { role: 'NV', username: 'nv_hl_01', password: 'nv123' },
       { role: 'ADMIN', username: 'qtv_hl_01', password: 'qtv123' },
     ],
   },
@@ -25,7 +23,6 @@ const demoGroups = [
     accounts: [
       { role: 'SV', username: 'b22attt001', password: '123456' },
       { role: 'GV', username: 'gv_hcm_01', password: 'gv123' },
-      { role: 'NV', username: 'nv_hcm_01', password: 'nv123' },
       { role: 'ADMIN', username: 'qtv_hcm_01', password: 'qtv123' },
     ],
   },

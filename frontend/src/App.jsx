@@ -110,10 +110,6 @@ export default function App() {
       setCurrentPage(isCentralAdmin ? 'giam-sat-co-so' : 'quan-ly-du-lieu');
       return;
     }
-    if (user.role === 'nhanvien') {
-      setCurrentPage('quan-ly-du-lieu');
-      return;
-    }
     setCurrentPage('thong-ke');
   }, [user?.role, isCentralAdmin]);
 
@@ -153,7 +149,7 @@ export default function App() {
         </>
       )}
 
-      {(user.role === 'quantrivien' || user.role === 'nhanvien') && (
+      {user.role === 'quantrivien' && (
         <>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '2px solid #f0f0f0' }}>
             {isCentralAdmin && (
@@ -177,7 +173,7 @@ export default function App() {
         </>
       )}
 
-      {user.role !== 'sinhvien' && user.role !== 'quantrivien' && user.role !== 'nhanvien' && (
+      {user.role !== 'sinhvien' && user.role !== 'quantrivien' && (
         <section className="card">
           <h2>Chưa có giao diện cho vai trò này</h2>
         </section>
