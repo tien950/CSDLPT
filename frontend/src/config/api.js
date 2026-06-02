@@ -1,13 +1,12 @@
 export const API_LOCAL =
   import.meta.env.VITE_API_LOCAL || 'http://localhost:4000';
-export const API_GATEWAY =
-  import.meta.env.VITE_API_HQHD || API_LOCAL;
 
 export const API_BY_CAMPUS = {
   HQHD: import.meta.env.VITE_API_HQHD || 'http://26.28.246.97:4000',
   HQHL: import.meta.env.VITE_API_HQHL || 'http://26.54.47.104:4000',
   HQHCM: import.meta.env.VITE_API_HQHCM || 'http://26.213.180.63:4000',
 };
+export const API_GATEWAY = API_BY_CAMPUS.HQHD || API_LOCAL;
 const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 60000);
 
 export function getApiBase(maCS) {

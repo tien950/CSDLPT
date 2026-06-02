@@ -22,6 +22,17 @@ async function ensureUserNodeOnline(userNode, backendNode) {
   }
 }
 
+async function proxyLoginToUserNode(userNode, username, password) {
+  const result = await callRemoteNode(userNode, 'POST', '/api/auth/login', { username, password });
+  if (!result.ok) {
+    const error = new Error(result.data?.message ?? `Server cơ sở ${userNode} không phản hồi đăng nhập.`);
+    error.status = result.status;
+    error.node = userNode;
+    throw error;
+  }
+  return result;
+}
+
 router.post('/login', async (req, res) => {
   const { username, password } = req.body ?? {};
 
@@ -63,6 +74,21 @@ router.post('/login', async (req, res) => {
       success: false,
       message: 'Tài khoản demo chưa được cấu hình cơ sở hợp lệ.'
     });
+  }
+
+  if (userNode !== backendNode) {
+    try {
+      const remote = await proxyLoginToUserNode(userNode, username, password);
+      return res.status(remote.status).json(remote.data);
+    } catch (error) {
+      return res.status(error.status ?? 503).json({
+        success: false,
+        message: `Không thể đăng nhập: server cơ sở ${userNode} đang tắt hoặc không phản hồi.`,
+        node: userNode,
+        backendNode,
+        status: 'offline'
+      });
+    }
   }
 
   try {

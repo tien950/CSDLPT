@@ -125,6 +125,7 @@ export default function QuanLyDuLieu({ user }) {
 
   const canPickCampus = user?.role === 'quantrivien' && user?.maCS === 'HQHD';
   const currentCampus = canPickCampus ? campus : (user?.maCS ?? campus);
+  const canModifySelectedTable = selectedTable !== 'headquarter' || canPickCampus;
 
   const primaryKeys = useMemo(() => meta?.primaryKeys ?? [], [meta]);
   const primaryKeySet = useMemo(() => new Set(primaryKeys), [primaryKeys]);
@@ -209,6 +210,7 @@ export default function QuanLyDuLieu({ user }) {
   };
 
   const handleEdit = row => {
+    if (!canModifySelectedTable) return;
     const keys = {};
     primaryKeys.forEach(key => { keys[key] = row[key]; });
     setEditKeys(keys);
@@ -220,6 +222,7 @@ export default function QuanLyDuLieu({ user }) {
   };
 
   const handleDelete = async row => {
+    if (!canModifySelectedTable) return;
     if (!window.confirm('Bạn có chắc muốn xóa dòng này?')) return;
     const keys = {};
     primaryKeys.forEach(key => { keys[key] = row[key]; });
@@ -245,7 +248,7 @@ export default function QuanLyDuLieu({ user }) {
 
   const handleSubmit = async event => {
     event.preventDefault();
-    if (!meta) return;
+    if (!meta || !canModifySelectedTable) return;
     const payload = {};
     editableColumns.forEach(col => {
       if (editKeys && primaryKeySet.has(col.name)) return;
@@ -336,6 +339,11 @@ export default function QuanLyDuLieu({ user }) {
           />
           <button type="button" className="secondary" disabled>Tổng: {filteredRows.length}</button>
         </div>
+        {!canModifySelectedTable && (
+          <p className="subtitle" style={{ marginTop: -4, marginBottom: 12 }}>
+            Cơ sở đào tạo chỉ được chỉnh sửa bởi quản trị viên HQHD.
+          </p>
+        )}
 
         {loading ? (
           <p>Đang tải...</p>
@@ -346,24 +354,26 @@ export default function QuanLyDuLieu({ user }) {
                 <thead>
                   <tr>
                     {visibleColumns.map(col => <th key={col.name}>{getColumnLabel(col.name)}</th>)}
-                    <th>Thao tác</th>
+                    {canModifySelectedTable && <th>Thao tác</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {pageRows.map((row, index) => (
                     <tr key={index}>
                       {visibleColumns.map(col => <td key={col.name}>{formatValue(row[col.name], col)}</td>)}
-                      <td>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button type="button" className="secondary" onClick={() => handleEdit(row)}>Sửa</button>
-                          <button type="button" onClick={() => handleDelete(row)} disabled={saving}>Xóa</button>
-                        </div>
-                      </td>
+                      {canModifySelectedTable && (
+                        <td>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button type="button" className="secondary" onClick={() => handleEdit(row)}>Sửa</button>
+                            <button type="button" onClick={() => handleDelete(row)} disabled={saving}>Xóa</button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                   {pageRows.length === 0 && (
                     <tr>
-                      <td colSpan={visibleColumns.length + 1} style={{ textAlign: 'center', color: '#777' }}>
+                      <td colSpan={visibleColumns.length + (canModifySelectedTable ? 1 : 0)} style={{ textAlign: 'center', color: '#777' }}>
                         Chưa có dữ liệu.
                       </td>
                     </tr>
@@ -376,27 +386,29 @@ export default function QuanLyDuLieu({ user }) {
         )}
       </section>
 
-      <section className="card">
-        <h3>{editKeys ? 'Cập nhật dữ liệu' : 'Thêm mới dữ liệu'}</h3>
-        <form className="form" onSubmit={handleSubmit}>
-          {editableColumns.map(col => (
-            <label key={col.name}>
-              {getColumnLabel(col.name)}
-              {renderField(col)}
-            </label>
-          ))}
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button type="submit" disabled={saving || loading}>
-              {saving ? 'Đang lưu...' : editKeys ? 'Cập nhật' : 'Thêm mới'}
-            </button>
-            {editKeys && (
-              <button type="button" className="secondary" onClick={resetForm}>
-                Hủy chỉnh sửa
+      {canModifySelectedTable && (
+        <section className="card">
+          <h3>{editKeys ? 'Cập nhật dữ liệu' : 'Thêm mới dữ liệu'}</h3>
+          <form className="form" onSubmit={handleSubmit}>
+            {editableColumns.map(col => (
+              <label key={col.name}>
+                {getColumnLabel(col.name)}
+                {renderField(col)}
+              </label>
+            ))}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <button type="submit" disabled={saving || loading}>
+                {saving ? 'Đang lưu...' : editKeys ? 'Cập nhật' : 'Thêm mới'}
               </button>
-            )}
-          </div>
-        </form>
-      </section>
+              {editKeys && (
+                <button type="button" className="secondary" onClick={resetForm}>
+                  Hủy chỉnh sửa
+                </button>
+              )}
+            </div>
+          </form>
+        </section>
+      )}
     </div>
   );
 }

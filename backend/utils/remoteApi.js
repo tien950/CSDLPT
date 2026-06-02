@@ -22,14 +22,20 @@ async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const timer = setTimeout(() => controller.abort(new Error('Request timed out.')), timeoutMs);
+  const method = String(options.method ?? 'GET').toUpperCase();
+  const canSendBody = method !== 'GET' && method !== 'HEAD';
+  const requestOptions = {
+    method,
+    headers: options.headers,
+    signal: controller.signal
+  };
+
+  if (canSendBody && options.body !== undefined && options.body !== null) {
+    requestOptions.body = JSON.stringify(options.body);
+  }
 
   try {
-    const response = await fetch(url, {
-      method: options.method ?? 'GET',
-      headers: options.headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: controller.signal
-    });
+    const response = await fetch(url, requestOptions);
 
     const text = await response.text();
     let data = null;

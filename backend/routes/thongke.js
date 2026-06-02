@@ -10,7 +10,14 @@ const router = express.Router();
 const ID_TYPE = sql.NVarChar(50);
 
 function isCentralAdmin(req) {
-  return req.user?.role === 'quantrivien' && normalizeNodeKey(req.user?.maCS) === 'HQHD' && normalizeNodeKey(LOCAL_NODE) === 'HQHD';
+  return req.user?.role === 'quantrivien' && normalizeNodeKey(req.user?.maCS) === 'HQHD';
+}
+
+async function proxyToHqhdIfNeeded(req, res) {
+  if (normalizeNodeKey(LOCAL_NODE) === 'HQHD') return false;
+  const remote = await callRemoteNode('HQHD', req.method, req.originalUrl, null, req.headers.authorization);
+  res.status(remote.status).json(remote.data);
+  return true;
 }
 
 const DISTRIBUTED_QUERIES = {
@@ -653,6 +660,12 @@ router.get('/dangky-cheo', authenticate, requireRole(['quantrivien']), async (re
 router.get('/distributed/:queryKey', authenticate, requireRole(['quantrivien']), async (req, res) => {
   if (!isCentralAdmin(req)) {
     return res.status(403).json({ success: false, message: 'Chi quan tri vien HQHD duoc chay truy van phan tan.' });
+  }
+
+  try {
+    if (await proxyToHqhdIfNeeded(req, res)) return;
+  } catch (error) {
+    return sendError(res, error);
   }
 
   const config = DISTRIBUTED_QUERIES[req.params.queryKey];

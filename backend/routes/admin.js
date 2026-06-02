@@ -25,6 +25,7 @@ const ALLOWED_TABLES = {
 
 const STRING_TYPES = new Set(['varchar', 'nvarchar', 'char', 'nchar', 'text', 'ntext']);
 const EXCLUDED_COLUMNS = new Set(['rowguid']);
+const HEADQUARTER_TABLE = 'headquarter';
 
 function sendError(res, error) {
   if (isOfflineError(error)) {
@@ -68,6 +69,19 @@ function resolveNodeKey(req) {
     return nodeFromRequest;
   }
   return userNode;
+}
+
+function canModifyTable(req, table) {
+  if (table !== HEADQUARTER_TABLE) return true;
+  return req.user?.role === 'quantrivien'
+    && normalizeNodeKey(req.user?.maCS) === 'HQHD';
+}
+
+function rejectTableModification(res) {
+  return res.status(403).json({
+    success: false,
+    message: 'Chỉ quản trị viên HQHD được chỉnh sửa cơ sở đào tạo.'
+  });
 }
 
 function resolveSqlType(column) {
@@ -373,6 +387,9 @@ router.post('/:table', authenticate, requireRole(['quantrivien']), async (req, r
   if (!ALLOWED_TABLES[table]) {
     return res.status(404).json({ success: false, message: 'Bảng dữ liệu không hợp lệ.' });
   }
+  if (!canModifyTable(req, table)) {
+    return rejectTableModification(res);
+  }
 
   const nodeKey = resolveNodeKey(req);
   if (!nodeKey || !isValidNode(nodeKey)) {
@@ -426,6 +443,9 @@ router.put('/:table', authenticate, requireRole(['quantrivien']), async (req, re
   const table = req.params.table;
   if (!ALLOWED_TABLES[table]) {
     return res.status(404).json({ success: false, message: 'Bảng dữ liệu không hợp lệ.' });
+  }
+  if (!canModifyTable(req, table)) {
+    return rejectTableModification(res);
   }
 
   const nodeKey = resolveNodeKey(req);
@@ -490,6 +510,9 @@ router.delete('/:table', authenticate, requireRole(['quantrivien']), async (req,
   const table = req.params.table;
   if (!ALLOWED_TABLES[table]) {
     return res.status(404).json({ success: false, message: 'Bảng dữ liệu không hợp lệ.' });
+  }
+  if (!canModifyTable(req, table)) {
+    return rejectTableModification(res);
   }
 
   const nodeKey = resolveNodeKey(req);
