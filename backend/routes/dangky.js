@@ -224,12 +224,12 @@ async function fetchAvailableClassesByCampus(nodeKey, options = {}) {
     return fetchAvailableClassesLegacy(nodeKey, { termId, subjectId, headquarterId });
   }
 }
-async function getClassById(nodeKey, classId) {
+async function getClassById(nodeKey, classId, authToken = null) {
   const normalizedNode = normalizeNodeKey(nodeKey);
   const shouldQueryLocal = LOCAL_NODE === 'HQHD' || normalizedNode === normalizeNodeKey(LOCAL_NODE);
 
   if (!shouldQueryLocal) {
-    const remote = await callRemoteNode(nodeKey, 'GET', `/api/dangky/internal/lophocphan/${encodeURIComponent(classId)}`, null, null);
+    const remote = await callRemoteNode(nodeKey, 'GET', `/api/dangky/internal/lophocphan/${encodeURIComponent(classId)}`, null, authToken);
     if (!remote.ok) {
       const error = new Error(remote.data?.message ?? 'Không lấy được thông tin lớp học phần.');
       error.status = remote.status;
@@ -432,17 +432,28 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
   if (!isValidNode(maCS) || !isValidNode(maCSLopNormalized)) {
     return res.status(400).json({ success: false, message: 'Mã cơ sở không hợp lệ.' });
   }
-  const headquarterStudent = (await fetchStudentHeadquarterId(LOCAL_NODE, maSV)) ?? getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE;
-  const classInfo = await getClassById(maCSLopNormalized, maLop);
-  let regId = null;
-  if (!classInfo || classInfo.class_status !== 'OPEN' || classInfo.number_of_registration >= classInfo.max_students) {
-    return res.status(400).json({
-      success: false,
-      message: 'Lớp học phần đã đủ sĩ số, không mở đăng ký hoặc không thuộc cơ sở được chọn.'
-    });
+
+  // Workstations should not coordinate cross-campus writes directly.
+  // Send them to the HQHD gateway before doing remote class checks.
+  if (maCS !== maCSLopNormalized) {
+    const proxied = await proxyCrossRegistrationToHqhd(req, res);
+    if (proxied) {
+      return proxied;
+    }
   }
-  if (maCS === maCSLopNormalized) {
-    try {
+
+  let regId = null;
+  try {
+    const classInfo = await getClassById(maCSLopNormalized, maLop, req.headers.authorization);
+    if (!classInfo || classInfo.class_status !== 'OPEN' || classInfo.number_of_registration >= classInfo.max_students) {
+      return res.status(400).json({
+        success: false,
+        message: 'Lớp học phần đã đủ sĩ số, không mở đăng ký hoặc không thuộc cơ sở được chọn.'
+      });
+    }
+
+    if (maCS === maCSLopNormalized) {
+      const headquarterStudent = (await fetchStudentHeadquarterId(LOCAL_NODE, maSV)) ?? getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE;
       const pool = await safeGetPool(LOCAL_NODE);
       const checkRequest = createRequest(LOCAL_NODE, null, pool);
       checkRequest.input('ID_student', ID_TYPE, maSV);
@@ -456,16 +467,8 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
       await registerLocal(LOCAL_NODE, regId, maSV, maLop, headquarterStudent);
       clearStudentCache(maSV, LOCAL_NODE);
       return res.json({ success: true, data: { maDangKy: regId, maSV, maLop, maCS: LOCAL_NODE, maCSLop: maCSLopNormalized } });
-    } catch (error) {
-      return sendError(res, error);
     }
-  }
-  const proxied = await proxyCrossRegistrationToHqhd(req, res);
-  if (proxied) {
-    return proxied;
-  }
 
-  try {
     regId = await registerCrossCampusOnHqhd(maSV, maLop);
     clearStudentCache(maSV, LOCAL_NODE);
     return res.json({
