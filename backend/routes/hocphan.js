@@ -11,38 +11,6 @@ import { fetchNodeApiJson, getProxyHeaders, isProxyRequest } from '../utils/node
 const router = express.Router();
 const ID_TYPE = sql.NVarChar(50);
 
-// Query result cache: { "HQHL": { data: [...], timestamp: 1625..., ttl: 5min } }
-const queryCache = new Map();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-function getCacheKey(nodeKey, query) {
-  return `${nodeKey}:${query}`;
-}
-
-function getCachedResult(nodeKey, queryName) {
-  const key = getCacheKey(nodeKey, queryName);
-  const cached = queryCache.get(key);
-  if (!cached) return null;
-
-  const ageMs = Date.now() - cached.timestamp;
-  if (ageMs > CACHE_TTL_MS) {
-    queryCache.delete(key);
-    return null;
-  }
-
-  console.log(`[CACHE] HIT: ${key} (age: ${Math.round(ageMs / 1000)}s)`);
-  return cached.data;
-}
-
-function setCachedResult(nodeKey, queryName, data) {
-  const key = getCacheKey(nodeKey, queryName);
-  queryCache.set(key, {
-    data,
-    timestamp: Date.now()
-  });
-  console.log(`[CACHE] SET: ${key}`);
-}
-
 function canProxyToNode(req, nodeKey) {
   if (!nodeKey || isProxyRequest(req)) return false;
   const userNode = normalizeNodeKey(req.user?.maCS);
@@ -106,15 +74,18 @@ function getRowField(row, keys, fallback = null) {
 
 function normalizeAvailableClassRow(row) {
   const maMH = getRowField(row, ['maMH', 'Mã lớp học phần', 'ID_class']);
+  const siSoToiDa = Number(getRowField(row, ['siSoToiDa', 'max_students'], 0)) || 0;
+  const siSoDaDangKy = Number(getRowField(row, ['siSoDaDangKy', 'number_of_registration'], 0)) || 0;
+  const conLai = Number(getRowField(row, ['conLai', 'remaining'], siSoToiDa - siSoDaDangKy)) || 0;
   return {
     maMH,
     tenMonHoc: getRowField(row, ['tenMonHoc', 'Tên học phần', 'name_subject']),
     soTC: Number(getRowField(row, ['soTC', 'Số tín chỉ', 'number_of_credit'], 0)) || 0,
     nhom: getRowField(row, ['nhom', 'Nhóm lớp', 'group_number']),
     giangVien: getRowField(row, ['giangVien', 'Giảng viên', 'name_teacher']),
-    siSoToiDa: Number(getRowField(row, ['siSoToiDa', 'Sĩ số tối đa', 'max_students'], 0)) || 0,
-    siSoDaDangKy: Number(getRowField(row, ['siSoDaDangKy', 'Số lượng đã đăng ký', 'number_of_registration'], 0)) || 0,
-    conLai: Number(getRowField(row, ['conLai', 'Số chỗ còn lại', 'remaining'], 0)) || 0,
+    siSoToiDa,
+    siSoDaDangKy,
+    conLai: Math.max(conLai, 0),
     trangThai: getRowField(row, ['trangThai', 'Trạng thái lớp', 'class_status']),
     hocKy: getRowField(row, ['hocKy', 'name_term', 'Học kỳ']),
     maCS: normalizeNodeKey(getRowField(row, ['maCS', 'Mã cơ sở', 'ID_headquarter'])) ?? null
@@ -174,7 +145,6 @@ async function fetchAvailableClassesLegacy(nodeKey, options = {}) {
        ON tm.ID_term = c.ID_term COLLATE DATABASE_DEFAULT
      WHERE h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = @headquarterId COLLATE SQL_Latin1_General_CP1_CI_AS
        AND c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
-       AND c.number_of_registration < c.max_students
        ${termFilter}
        ${subjectFilter}
      ORDER BY sub.ID_subject, c.ID_class`
@@ -297,34 +267,9 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
   }
 
   try {
-    const cacheKey = `available:${termId ?? ''}:${subjectId ?? ''}`;
-    const cached = getCachedResult(maCS, cacheKey);
-    if (cached) {
-      return res.json({
-        success: true,
-        data: cached,
-        cached: true
-      });
-    }
-
-    const pool = await safeGetPool(LOCAL_NODE);
-    const request = createRequest(LOCAL_NODE, null, pool);
-    request.input('ID_headquarter', ID_TYPE, getHeadquarterId(maCS) ?? maCS);
-    request.input('ID_term', ID_TYPE, termId);
-    request.input('ID_subject', ID_TYPE, subjectId);
-    let result;
-    try {
-      result = await request.execute('usp_GetClassesByCampus');
-    } catch (error) {
-      if (!isMissingProcedureError(error)) {
-        throw error;
-      }
-      result = await fetchAvailableClassesLegacy(LOCAL_NODE, { maCS, termId, subjectId });
-    }
-
+    const result = await fetchAvailableClassesLegacy(LOCAL_NODE, { maCS, termId, subjectId });
     const data = collapseByClass(normalizeRows(result).map(normalizeAvailableClassRow));
     if (Array.isArray(data)) {
-      setCachedResult(maCS, cacheKey, data);
       return res.json({
         success: true,
         data,
@@ -496,7 +441,6 @@ router.get('/available-all', authenticate, requireRole(['sinhvien']), async (req
               JOIN teacher t ON t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
               JOIN term tm ON tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
               WHERE c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
-                AND c.max_students > c.number_of_registration
               ORDER BY c.ID_class`
           );
           allClasses[nodeKey] = result.recordset;

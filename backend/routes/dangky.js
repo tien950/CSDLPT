@@ -117,7 +117,8 @@ function normalizeAvailableClassRow(row, fallbackNode = LOCAL_NODE) {
   const nhom = getField(row, ['nhom', 'group_number', 'Nhóm lớp', 'Nhom lop']);
   const siSoDaDangKy = Number(getField(row, ['siSoDaDangKy', 'number_of_registration', 'Số lượng đã đăng ký', 'So luong da dang ky'], 0)) || 0;
   const siSoToiDa = Number(getField(row, ['siSoToiDa', 'max_students', 'Sĩ số tối đa', 'Si so toi da'], 0)) || 0;
-  const choConLai = Number(getField(row, ['choConLai', 'remaining', 'Số chỗ còn lại', 'So cho con lai'], Math.max(siSoToiDa - siSoDaDangKy, 0))) || 0;
+  const choConLaiRaw = Number(getField(row, ['choConLai', 'remaining', 'So cho con lai'], siSoToiDa - siSoDaDangKy)) || 0;
+  const choConLai = Math.max(choConLaiRaw, 0);
   const trangThai = getField(row, ['trangThai', 'class_status', 'Trạng thái lớp', 'Trang thai lop']);
   const ngayHoc = getField(row, ['ngayHoc', 'study_date', 'Ngày học', 'Ngay hoc']);
   const thu = getField(row, ['thu', 'day_of_week', 'Thứ', 'Thu']);
@@ -219,7 +220,6 @@ async function fetchAvailableClassesLegacy(nodeKey, options = {}) {
        ON ss.ID_timeslot = ts.ID_timeslot COLLATE DATABASE_DEFAULT
      WHERE h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = @headquarterId COLLATE SQL_Latin1_General_CP1_CI_AS
        AND c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
-       AND c.number_of_registration < c.max_students
        ${termFilter}
        ${subjectFilter}
      ORDER BY sub.ID_subject, c.ID_class, ss.study_date, ts.start_time`
@@ -229,20 +229,7 @@ async function fetchAvailableClassesLegacy(nodeKey, options = {}) {
 
 async function fetchAvailableClassesByCampus(nodeKey, options = {}) {
   const { termId = null, subjectId = null, headquarterId = null } = options;
-  const pool = await safeGetPool(nodeKey);
-  const request = createRequest(nodeKey, null, pool);
-  request.input('ID_headquarter', ID_TYPE, headquarterId ?? getHeadquarterId(nodeKey) ?? nodeKey);
-  request.input('ID_term', ID_TYPE, termId);
-  request.input('ID_subject', ID_TYPE, subjectId);
-  try {
-    const result = await request.execute('usp_GetClassesByCampus');
-    return result.recordset ?? [];
-  } catch (error) {
-    if (!isMissingProcedureError(error)) {
-      throw error;
-    }
-    return fetchAvailableClassesLegacy(nodeKey, { termId, subjectId, headquarterId });
-  }
+  return fetchAvailableClassesLegacy(nodeKey, { termId, subjectId, headquarterId });
 }
 async function getClassById(nodeKey, classId, authToken = null) {
   const normalizedNode = normalizeNodeKey(nodeKey);
