@@ -20,76 +20,85 @@ const DISTRIBUTED_QUERY_OPTIONS = [
 
 const PAGE_SIZE = 10;
 
-export default function ThongKe({ user }) {
-  const [campus, setCampus] = useState(user?.maCS ?? 'HQHD');
-  const [scope, setScope] = useState(user?.role === 'quantrivien' ? 'all' : 'campus');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [overview, setOverview] = useState(null);
+const QUICK_REPORTS = [
+  { key: 'lophocphan', label: 'Tinh trang lop theo hoc ky', path: '/api/thongke/lophocphan', requiresTerm: true, supportsCampus: true },
+];
 
+export default function ThongKe({ user }) {
   const [distributedKey, setDistributedKey] = useState('q1');
   const [distributedRows, setDistributedRows] = useState([]);
   const [distributedTitle, setDistributedTitle] = useState('');
   const [distributedLoading, setDistributedLoading] = useState(false);
   const [distributedError, setDistributedError] = useState('');
 
-  const [pageOverview, setPageOverview] = useState(1);
   const [pageDistributed, setPageDistributed] = useState(1);
 
+  const [quickKey, setQuickKey] = useState('lophocphan');
+  const [quickRows, setQuickRows] = useState([]);
+  const [quickTitle, setQuickTitle] = useState('');
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickError, setQuickError] = useState('');
+  const [quickCampus, setQuickCampus] = useState('');
+  const [quickTerm, setQuickTerm] = useState('');
+  const [terms, setTerms] = useState([]);
+  const [pageQuick, setPageQuick] = useState(1);
+
+  const [lookupStudentId, setLookupStudentId] = useState('');
+  const [lookupCampus, setLookupCampus] = useState('HQHD');
+  const [lookupError, setLookupError] = useState('');
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [registrationRows, setRegistrationRows] = useState([]);
+  const [timetableRows, setTimetableRows] = useState([]);
+  const [pageRegistration, setPageRegistration] = useState(1);
+  const [pageTimetable, setPageTimetable] = useState(1);
+
   const isCentralAdmin = user?.role === 'quantrivien' && user?.maCS === 'HQHD';
-  const canPickCampus = user?.role === 'quantrivien';
+  const isAdmin = user?.role === 'quantrivien';
 
   useEffect(() => {
-    const fetchOverview = async () => {
-      setLoading(true);
-      setError('');
+    if (!isAdmin) return;
+    const fetchTerms = async () => {
       try {
-        const params = new URLSearchParams();
-        params.set('scope', scope);
-        if (scope === 'campus') params.set('maCS', campus);
-        const baseCampus = scope === 'campus' ? campus : (user?.maCS ?? campus);
-        const data = await apiFetch(`/api/thongke/overview?${params.toString()}`, baseCampus);
-        if (!data.success) {
-          setOverview(null);
-          setError(data.message || 'Khong the tai thong ke.');
-          return;
+        const data = isCentralAdmin
+          ? await gatewayFetch('/api/admin/term?maCS=HQHD')
+          : await apiFetch('/api/admin/term', user?.maCS ?? 'HQHD');
+        if (data.success) {
+          setTerms(data.data ?? []);
         }
-        setOverview(data.data);
-        setPageOverview(1);
-      } catch (err) {
-        setOverview(null);
-        setError('Loi tai thong ke: ' + err.message);
-      } finally {
-        setLoading(false);
+      } catch {
+        setTerms([]);
       }
     };
-    fetchOverview();
-  }, [scope, campus, user?.maCS]);
+    fetchTerms();
+  }, [isAdmin, isCentralAdmin, user?.maCS]);
 
-  const overviewRows = useMemo(
-    () => Object.entries(overview?.perNode ?? {}).map(([coSo, stats]) => ({ coSo, ...stats })),
-    [overview]
-  );
+  useEffect(() => {
+    if (isCentralAdmin) return;
+    if (user?.maCS) {
+      setQuickCampus(user.maCS);
+      setLookupCampus(user.maCS);
+    }
+  }, [isCentralAdmin, user?.maCS]);
 
-  const overviewPageCount = Math.max(1, Math.ceil(overviewRows.length / PAGE_SIZE));
-  const overviewPageRows = useMemo(
-    () => overviewRows.slice((pageOverview - 1) * PAGE_SIZE, pageOverview * PAGE_SIZE),
-    [overviewRows, pageOverview]
-  );
+  useEffect(() => {
+    if (!terms.length || quickTerm) return;
+    const first = terms[0]?.ID_term ?? terms[0]?.id_term ?? '';
+    if (first) setQuickTerm(first);
+  }, [terms, quickTerm]);
 
-  const offlineNodes = overview?.offlineNodes ?? [];
-
-  const runDistributedQuery = async () => {
+  const runDistributedQuery = async selectedKey => {
+    if (!selectedKey) return;
     setDistributedLoading(true);
     setDistributedError('');
     try {
-      const data = await gatewayFetch(`/api/thongke/distributed/${distributedKey}`);
+      const data = await gatewayFetch(`/api/thongke/distributed/${selectedKey}`);
       if (!data.success) {
         setDistributedRows([]);
         setDistributedTitle('');
         setDistributedError(data.message || 'Khong chay duoc truy van.');
         return;
       }
+      setDistributedKey(selectedKey);
       setDistributedRows(data.data ?? []);
       setDistributedTitle(data.meta?.title ?? '');
       setPageDistributed(1);
@@ -99,6 +108,87 @@ export default function ThongKe({ user }) {
       setDistributedError(err.message || 'Khong chay duoc truy van.');
     } finally {
       setDistributedLoading(false);
+    }
+  };
+
+  const runQuickReport = async selectedKey => {
+    const report = QUICK_REPORTS.find(item => item.key === selectedKey);
+    if (!report) return;
+    if (report.requiresTerm && !quickTerm) {
+      setQuickError('Can chon hoc ky.');
+      return;
+    }
+    setQuickLoading(true);
+    setQuickError('');
+    try {
+      const params = new URLSearchParams();
+      if (report.requiresTerm) params.set('ID_term', quickTerm);
+      if (report.supportsCampus && quickCampus) params.set('ID_headquarter', quickCampus);
+      const query = params.toString();
+      const path = query ? `${report.path}?${query}` : report.path;
+      const data = isCentralAdmin
+        ? await gatewayFetch(path)
+        : await apiFetch(path, user?.maCS ?? 'HQHD');
+      if (!data.success) {
+        setQuickRows([]);
+        setQuickTitle('');
+        setQuickError(data.message || 'Khong chay duoc bao cao.');
+        return;
+      }
+      setQuickKey(selectedKey);
+      setQuickRows(data.data ?? []);
+      setQuickTitle(report.label);
+      setPageQuick(1);
+    } catch (err) {
+      setQuickRows([]);
+      setQuickTitle('');
+      setQuickError(err.message || 'Khong chay duoc bao cao.');
+    } finally {
+      setQuickLoading(false);
+    }
+  };
+
+  const handleLookupStudent = async () => {
+    const studentId = lookupStudentId.trim();
+    if (!studentId) {
+      setLookupError('Nhap ma sinh vien.');
+      return;
+    }
+    setLookupLoading(true);
+    setLookupError('');
+    try {
+      const params = new URLSearchParams({ ID_student: studentId, ID_headquarter: lookupCampus });
+      const fetcher = isCentralAdmin
+        ? gatewayFetch
+        : path => apiFetch(path, user?.maCS ?? 'HQHD');
+      const results = await Promise.allSettled([
+        fetcher(`/api/dangky/result?${params.toString()}`),
+        fetcher(`/api/sinhvien/timetable?${params.toString()}`)
+      ]);
+      const errors = [];
+      if (results[0].status === 'fulfilled') {
+        setRegistrationRows(results[0].value.data ?? []);
+      } else {
+        setRegistrationRows([]);
+        errors.push(results[0].reason?.message || 'Khong tra cuu duoc dang ky.');
+      }
+      if (results[1].status === 'fulfilled') {
+        setTimetableRows(results[1].value.data ?? []);
+      } else {
+        setTimetableRows([]);
+        errors.push(results[1].reason?.message || 'Khong tra cuu duoc thoi khoa bieu.');
+      }
+      if (errors.length) {
+        setLookupError(errors.join(' | '));
+      }
+      setPageRegistration(1);
+      setPageTimetable(1);
+    } catch (err) {
+      setRegistrationRows([]);
+      setTimetableRows([]);
+      setLookupError(err.message || 'Khong tra cuu duoc.');
+    } finally {
+      setLookupLoading(false);
     }
   };
 
@@ -112,91 +202,214 @@ export default function ThongKe({ user }) {
     [distributedRows, pageDistributed]
   );
 
+  const quickColumns = useMemo(
+    () => (quickRows[0] ? Object.keys(quickRows[0]) : []),
+    [quickRows]
+  );
+  const quickPageCount = Math.max(1, Math.ceil(quickRows.length / PAGE_SIZE));
+  const quickPageRows = useMemo(
+    () => quickRows.slice((pageQuick - 1) * PAGE_SIZE, pageQuick * PAGE_SIZE),
+    [quickRows, pageQuick]
+  );
+
+  const registrationColumns = useMemo(
+    () => (registrationRows[0] ? Object.keys(registrationRows[0]) : []),
+    [registrationRows]
+  );
+  const registrationPageCount = Math.max(1, Math.ceil(registrationRows.length / PAGE_SIZE));
+  const registrationPageRows = useMemo(
+    () => registrationRows.slice((pageRegistration - 1) * PAGE_SIZE, pageRegistration * PAGE_SIZE),
+    [registrationRows, pageRegistration]
+  );
+
+  const timetableColumns = useMemo(
+    () => (timetableRows[0] ? Object.keys(timetableRows[0]) : []),
+    [timetableRows]
+  );
+  const timetablePageCount = Math.max(1, Math.ceil(timetableRows.length / PAGE_SIZE));
+  const timetablePageRows = useMemo(
+    () => timetableRows.slice((pageTimetable - 1) * PAGE_SIZE, pageTimetable * PAGE_SIZE),
+    [timetableRows, pageTimetable]
+  );
+
   return (
     <div className="stack">
-      <section className="card">
-        <h2>Thong ke tong quan</h2>
-        <p className="subtitle">Theo doi du lieu theo co so hoac toan truong.</p>
-        {error && <div className="alert" style={{ marginTop: 12 }}>{error}</div>}
+      {isAdmin && (
+        <section className="card">
+          <h3>Bao cao nhanh</h3>
+          <p className="subtitle">Tong hop nhanh theo cac mau thong ke san co.</p>
+          {quickError && <div className="alert" style={{ marginTop: 12 }}>{quickError}</div>}
 
-        <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-          <label style={{ minWidth: 220 }}>
-            Pham vi
-            <select value={scope} onChange={e => setScope(e.target.value)}>
-              {canPickCampus && <option value="all">Toan truong</option>}
-              <option value="campus">Theo co so</option>
-            </select>
-          </label>
-          {scope === 'campus' && (
+          <div style={{ marginTop: 16, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+            {QUICK_REPORTS.map(item => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => runQuickReport(item.key)}
+                disabled={quickLoading}
+                className={quickKey === item.key ? 'primary' : 'secondary'}
+                style={{ textAlign: 'left', padding: '12px 14px', whiteSpace: 'normal', lineHeight: 1.4 }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 12, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', alignItems: 'end' }}>
+            {QUICK_REPORTS.find(item => item.key === quickKey)?.supportsCampus && (
+              <label style={{ minWidth: 220 }}>
+                Co so
+                <select value={quickCampus} onChange={e => setQuickCampus(e.target.value)} disabled={!isCentralAdmin}>
+                  {isCentralAdmin && <option value="">Tat ca</option>}
+                  {CAMPUS_OPTIONS.map(option => (
+                    <option key={option.key} value={option.key}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {QUICK_REPORTS.find(item => item.key === quickKey)?.requiresTerm && (
+              <label style={{ minWidth: 260 }}>
+                Hoc ky (chon hoac nhap)
+                <select value={quickTerm} onChange={e => setQuickTerm(e.target.value)}>
+                  <option value="">Chon hoc ky</option>
+                  {terms.map(term => (
+                    <option key={term.ID_term ?? term.id_term} value={term.ID_term ?? term.id_term}>
+                      {term.name_term ?? term.ID_term}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={quickTerm}
+                  onChange={e => setQuickTerm(e.target.value)}
+                  placeholder="Nhap ma hoc ky (VD: HK2024_1)"
+                  style={{ marginTop: 8 }}
+                />
+              </label>
+            )}
+            <button type="button" className="secondary" onClick={() => runQuickReport(quickKey)} disabled={quickLoading}>
+              {quickLoading ? 'Dang tai...' : 'Lam moi'}
+            </button>
+          </div>
+
+          {quickTitle && (
+            <p className="subtitle" style={{ marginTop: 12 }}>
+              {quickTitle} - Tong dong: {quickRows.length}
+            </p>
+          )}
+
+          {quickRows.length > 0 && (
+            <div className="table-wrap" style={{ marginTop: 12 }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    {quickColumns.map(col => (
+                      <th key={col}>{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {quickPageRows.map((row, index) => (
+                    <tr key={index}>
+                      {quickColumns.map(col => (
+                        <td key={col}>{row[col] === null || row[col] === undefined ? '' : String(row[col])}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {quickRows.length > 0 && (
+            <Pagination page={pageQuick} pages={quickPageCount} onPageChange={setPageQuick} loading={quickLoading} />
+          )}
+        </section>
+      )}
+
+      {isAdmin && (
+        <section className="card">
+          <h3>Tra cuu theo sinh vien</h3>
+          <p className="subtitle">Tra cuu dang ky va thoi khoa bieu theo ma sinh vien.</p>
+          {lookupError && <div className="alert" style={{ marginTop: 12 }}>{lookupError}</div>}
+
+          <div style={{ marginTop: 16, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', alignItems: 'end' }}>
+            <label style={{ minWidth: 220 }}>
+              Ma sinh vien
+              <input value={lookupStudentId} onChange={e => setLookupStudentId(e.target.value)} placeholder="VD: B22ATTT003" />
+            </label>
             <label style={{ minWidth: 220 }}>
               Co so
-              <select value={campus} onChange={e => setCampus(e.target.value)} disabled={!canPickCampus}>
+              <select value={lookupCampus} onChange={e => setLookupCampus(e.target.value)} disabled={!isCentralAdmin}>
                 {CAMPUS_OPTIONS.map(option => (
                   <option key={option.key} value={option.key}>{option.label}</option>
                 ))}
               </select>
             </label>
-          )}
-        </div>
-      </section>
+            <button type="button" onClick={handleLookupStudent} disabled={lookupLoading}>
+              {lookupLoading ? 'Dang tai...' : 'Tra cuu'}
+            </button>
+          </div>
 
-      <section className="card">
-        <h3>Ket qua thong ke</h3>
-        {loading ? (
-          <p>Dang tai...</p>
-        ) : (
-          <>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Co so</th>
-                    <th>Co so dao tao</th>
-                    <th>Khoa</th>
-                    <th>Sinh vien</th>
-                    <th>Giang vien</th>
-                    <th>Hoc phan</th>
-                    <th>Lop hoc phan</th>
-                    <th>Phong hoc</th>
-                    <th>Lich hoc</th>
-                    <th>Dang ky</th>
-                    <th>Huy dang ky</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {overviewPageRows.map(row => (
-                    <tr key={row.coSo}>
-                      <td>{row.coSo}</td>
-                      <td>{row.headquarter}</td>
-                      <td>{row.department}</td>
-                      <td>{row.student}</td>
-                      <td>{row.teacher}</td>
-                      <td>{row.subject}</td>
-                      <td>{row.class}</td>
-                      <td>{row.room}</td>
-                      <td>{row.session}</td>
-                      <td>{row.registration}</td>
-                      <td>{row.cancelled}</td>
-                    </tr>
-                  ))}
-                  {overviewPageRows.length === 0 && (
+          {registrationRows.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <h4>Ket qua dang ky</h4>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
                     <tr>
-                      <td colSpan={11} style={{ textAlign: 'center', color: '#777' }}>Chua co du lieu.</td>
+                      {registrationColumns.map(col => (
+                        <th key={col}>{col}</th>
+                      ))}
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {registrationPageRows.map((row, index) => (
+                      <tr key={index}>
+                        {registrationColumns.map(col => (
+                          <td key={col}>{row[col] === null || row[col] === undefined ? '' : String(row[col])}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination page={pageRegistration} pages={registrationPageCount} onPageChange={setPageRegistration} loading={lookupLoading} />
             </div>
-            <Pagination page={pageOverview} pages={overviewPageCount} onPageChange={setPageOverview} loading={loading} />
-          </>
-        )}
+          )}
 
-        {offlineNodes.length > 0 && (
-          <p className="subtitle" style={{ marginTop: 12 }}>
-            Co so offline: {offlineNodes.join(', ')}
-          </p>
-        )}
-      </section>
+          {registrationRows.length === 0 && timetableRows.length === 0 && !lookupLoading && (
+            <p className="subtitle" style={{ marginTop: 12 }}>
+              Chua co du lieu.
+            </p>
+          )}
+
+          {timetableRows.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <h4>Thoi khoa bieu</h4>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      {timetableColumns.map(col => (
+                        <th key={col}>{col}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {timetablePageRows.map((row, index) => (
+                      <tr key={index}>
+                        {timetableColumns.map(col => (
+                          <td key={col}>{row[col] === null || row[col] === undefined ? '' : String(row[col])}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination page={pageTimetable} pages={timetablePageCount} onPageChange={setPageTimetable} loading={lookupLoading} />
+            </div>
+          )}
+        </section>
+      )}
 
       {isCentralAdmin && (
         <section className="card">
@@ -204,18 +417,22 @@ export default function ThongKe({ user }) {
           <p className="subtitle">Chay nhanh 7 truy van phan tan theo de tai.</p>
           {distributedError && <div className="alert" style={{ marginTop: 12 }}>{distributedError}</div>}
 
-          <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}>
-            <label style={{ minWidth: 340 }}>
-              Chon truy van
-              <select value={distributedKey} onChange={e => setDistributedKey(e.target.value)}>
-                {DISTRIBUTED_QUERY_OPTIONS.map(item => (
-                  <option key={item.key} value={item.key}>{item.label}</option>
-                ))}
-              </select>
-            </label>
-            <button type="button" onClick={runDistributedQuery} disabled={distributedLoading}>
-              {distributedLoading ? 'Dang chay...' : 'Chay truy van'}
-            </button>
+          <div style={{ marginTop: 16, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+            {DISTRIBUTED_QUERY_OPTIONS.map(item => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => runDistributedQuery(item.key)}
+                disabled={distributedLoading}
+                className={distributedKey === item.key ? 'primary' : 'secondary'}
+                style={{ textAlign: 'left', padding: '12px 14px', whiteSpace: 'normal', lineHeight: 1.4 }}
+              >
+                <strong>{item.label.split(' - ')[0]}</strong>
+                <div style={{ fontSize: '0.9rem', opacity: 0.8, marginTop: 6 }}>
+                  {item.label.split(' - ')[1]}
+                </div>
+              </button>
+            ))}
           </div>
 
           {distributedTitle && (

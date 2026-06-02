@@ -43,8 +43,8 @@ FROM OPENQUERY(
   JOIN CSDL_HL.dbo.student st ON r.ID_student COLLATE DATABASE_DEFAULT = st.ID_student COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.department d ON st.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.headquarter hq ON d.ID_headquarter COLLATE DATABASE_DEFAULT = hq.ID_headquarter COLLATE DATABASE_DEFAULT
-  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''''REGISTERED''''
-    AND hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHL''''
+  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''REGISTERED''
+    AND hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHL''
   GROUP BY hq.ID_headquarter, hq.name_headquarter
   '
 )
@@ -58,8 +58,8 @@ FROM OPENQUERY(
   JOIN DkiTinChi_HCM.dbo.student st ON r.ID_student COLLATE DATABASE_DEFAULT = st.ID_student COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.department d ON st.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.headquarter hq ON d.ID_headquarter COLLATE DATABASE_DEFAULT = hq.ID_headquarter COLLATE DATABASE_DEFAULT
-  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''''REGISTERED''''
-    AND hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHCM''''
+  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''REGISTERED''
+    AND hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHCM''
   GROUP BY hq.ID_headquarter, hq.name_headquarter
   '
 )
@@ -99,8 +99,8 @@ FROM OPENQUERY(
   JOIN CSDL_HL.dbo.subject sub ON c.ID_subject COLLATE DATABASE_DEFAULT = sub.ID_subject COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.department d ON te.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
-  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''''REGISTERED''''
-    AND d.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHL''''
+  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''REGISTERED''
+    AND d.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHL''
   GROUP BY sub.ID_subject, sub.name_subject
   '
 )
@@ -115,8 +115,8 @@ FROM OPENQUERY(
   JOIN DkiTinChi_HCM.dbo.subject sub ON c.ID_subject COLLATE DATABASE_DEFAULT = sub.ID_subject COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.department d ON te.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
-  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''''REGISTERED''''
-    AND d.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHCM''''
+  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''REGISTERED''
+    AND d.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHCM''
   GROUP BY sub.ID_subject, sub.name_subject
   '
 )
@@ -172,7 +172,7 @@ FROM OPENQUERY(
   JOIN CSDL_HL.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.department d_te ON te.ID_department COLLATE DATABASE_DEFAULT = d_te.ID_department COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.headquarter hq_cl ON d_te.ID_headquarter COLLATE DATABASE_DEFAULT = hq_cl.ID_headquarter COLLATE DATABASE_DEFAULT
-  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''''REGISTERED''''
+  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''REGISTERED''
     AND hq_st.ID_headquarter COLLATE DATABASE_DEFAULT <> hq_cl.ID_headquarter COLLATE DATABASE_DEFAULT
   '
 )
@@ -194,7 +194,7 @@ FROM OPENQUERY(
   JOIN DkiTinChi_HCM.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.department d_te ON te.ID_department COLLATE DATABASE_DEFAULT = d_te.ID_department COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.headquarter hq_cl ON d_te.ID_headquarter COLLATE DATABASE_DEFAULT = hq_cl.ID_headquarter COLLATE DATABASE_DEFAULT
-  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''''REGISTERED''''
+  WHERE r.registration_status COLLATE DATABASE_DEFAULT = ''REGISTERED''
     AND hq_st.ID_headquarter COLLATE DATABASE_DEFAULT <> hq_cl.ID_headquarter COLLATE DATABASE_DEFAULT
   '
 )
@@ -225,7 +225,7 @@ FROM OPENQUERY(
   JOIN CSDL_HL.dbo.subject sub ON c.ID_subject COLLATE DATABASE_DEFAULT = sub.ID_subject COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.department d ON te.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
-  WHERE d.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHL''''
+  WHERE d.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHL''
   '
 )
 UNION ALL
@@ -238,7 +238,7 @@ FROM OPENQUERY(
   JOIN DkiTinChi_HCM.dbo.subject sub ON c.ID_subject COLLATE DATABASE_DEFAULT = sub.ID_subject COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.department d ON te.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
-  WHERE d.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHCM''''
+  WHERE d.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHCM''
   '
 )
 )
@@ -270,8 +270,8 @@ FROM OPENQUERY(
   JOIN CSDL_HL.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.department d ON te.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.headquarter hq ON d.ID_headquarter COLLATE DATABASE_DEFAULT = hq.ID_headquarter COLLATE DATABASE_DEFAULT
-  WHERE c.class_status COLLATE DATABASE_DEFAULT = ''''OPEN''''
-    AND hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHL''''
+  WHERE c.class_status COLLATE DATABASE_DEFAULT = ''OPEN''
+    AND hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHL''
   GROUP BY hq.name_headquarter, d.name_department
   '
 )
@@ -285,8 +285,8 @@ FROM OPENQUERY(
   JOIN DkiTinChi_HCM.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.department d ON te.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.headquarter hq ON d.ID_headquarter COLLATE DATABASE_DEFAULT = hq.ID_headquarter COLLATE DATABASE_DEFAULT
-  WHERE c.class_status COLLATE DATABASE_DEFAULT = ''''OPEN''''
-    AND hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHCM''''
+  WHERE c.class_status COLLATE DATABASE_DEFAULT = ''OPEN''
+    AND hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHCM''
   GROUP BY hq.name_headquarter, d.name_department
   '
 )
@@ -320,9 +320,9 @@ FROM OPENQUERY(
   JOIN CSDL_HL.dbo.subject sub ON c.ID_subject COLLATE DATABASE_DEFAULT = sub.ID_subject COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.department d ON te.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
-  WHERE c.class_status COLLATE DATABASE_DEFAULT = ''''OPEN''''
+  WHERE c.class_status COLLATE DATABASE_DEFAULT = ''OPEN''
     AND c.number_of_registration < c.max_students
-    AND d.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHL''''
+    AND d.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHL''
   '
 )
 UNION ALL
@@ -335,9 +335,9 @@ FROM OPENQUERY(
   JOIN DkiTinChi_HCM.dbo.subject sub ON c.ID_subject COLLATE DATABASE_DEFAULT = sub.ID_subject COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.department d ON te.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
-  WHERE c.class_status COLLATE DATABASE_DEFAULT = ''''OPEN''''
+  WHERE c.class_status COLLATE DATABASE_DEFAULT = ''OPEN''
     AND c.number_of_registration < c.max_students
-    AND d.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHCM''''
+    AND d.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHCM''
   '
 )
 )
@@ -368,7 +368,7 @@ FROM OPENQUERY(
   JOIN CSDL_HL.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.department d ON te.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
   JOIN CSDL_HL.dbo.headquarter hq ON d.ID_headquarter COLLATE DATABASE_DEFAULT = hq.ID_headquarter COLLATE DATABASE_DEFAULT
-  WHERE hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHL''''
+  WHERE hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHL''
   GROUP BY hq.name_headquarter, te.ID_teacher, te.name_teacher
   '
 )
@@ -382,7 +382,7 @@ FROM OPENQUERY(
   JOIN DkiTinChi_HCM.dbo.teacher te ON c.ID_teacher COLLATE DATABASE_DEFAULT = te.ID_teacher COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.department d ON te.ID_department COLLATE DATABASE_DEFAULT = d.ID_department COLLATE DATABASE_DEFAULT
   JOIN DkiTinChi_HCM.dbo.headquarter hq ON d.ID_headquarter COLLATE DATABASE_DEFAULT = hq.ID_headquarter COLLATE DATABASE_DEFAULT
-  WHERE hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''''HQHCM''''
+  WHERE hq.ID_headquarter COLLATE DATABASE_DEFAULT = ''HQHCM''
   GROUP BY hq.name_headquarter, te.ID_teacher, te.name_teacher
   '
 )
@@ -412,6 +412,16 @@ function sendError(res, error) {
     success: false,
     message
   });
+}
+
+function buildRemotePath(path, query = {}) {
+  const params = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    params.set(key, String(value));
+  });
+  const qs = params.toString();
+  return qs ? `${path}?${qs}` : path;
 }
 
 async function safeGetPool(nodeKey) {
@@ -464,6 +474,34 @@ async function fetchOverviewForNode(nodeKey) {
     registration: row.registration ?? 0,
     cancelled: row.cancelled ?? 0
   };
+}
+
+async function fetchClassStatsForNode(nodeKey, termId, headquarterId) {
+  if (nodeKey !== LOCAL_NODE) {
+    const remotePath = buildRemotePath('/api/thongke/lophocphan', {
+      ID_term: termId,
+      ID_headquarter: headquarterId
+    });
+    const remote = await callRemoteNode(nodeKey, 'GET', remotePath, null, null);
+    if (!remote.ok) {
+      const error = new Error(remote.data?.message ?? 'Không lấy được thống kê lớp học phần từ node.');
+      error.status = remote.status;
+      error.node = nodeKey;
+      throw error;
+    }
+    return remote.data?.data ?? [];
+  }
+
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  if (termId) {
+    request.input('ID_term', ID_TYPE, termId);
+  }
+  if (headquarterId) {
+    request.input('ID_headquarter', ID_TYPE, headquarterId);
+  }
+  const result = await request.execute('usp_StatsClassRegistrationByTerm');
+  return result.recordset ?? [];
 }
 
 router.get('/internal/overview', authenticate, async (req, res) => {
@@ -534,6 +572,29 @@ router.get('/lophocphan', authenticate, requireRole(['nhanvien', 'quantrivien'])
   const role = req.user?.role;
   const termId = req.query.ID_term ?? null;
   const requestedNode = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS);
+  const centralAdmin = isCentralAdmin(req);
+
+  if (centralAdmin && !requestedNode) {
+    const nodes = Object.keys(getNodes());
+    try {
+      const results = await Promise.allSettled(
+        nodes.map(nodeKey => fetchClassStatsForNode(nodeKey, termId, nodeKey))
+      );
+      const data = [];
+      const offlineNodes = [];
+      results.forEach((item, index) => {
+        if (item.status === 'fulfilled') {
+          data.push(...item.value);
+        } else {
+          offlineNodes.push(nodes[index]);
+        }
+      });
+      return res.json({ success: true, data, meta: { offlineNodes } });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  }
+
   const nodeKey = role === 'quantrivien' && requestedNode && isValidNode(requestedNode)
     ? requestedNode
     : normalizeNodeKey(req.user?.maCS);
@@ -543,15 +604,8 @@ router.get('/lophocphan', authenticate, requireRole(['nhanvien', 'quantrivien'])
   }
 
   try {
-    const pool = await safeGetPool(nodeKey);
-    const request = createRequest(nodeKey, null, pool);
-    if (termId) {
-      request.input('ID_term', ID_TYPE, termId);
-    }
-    request.input('ID_headquarter', ID_TYPE, nodeKey);
-    const result = await request.execute('usp_StatsClassRegistrationByTerm');
-
-    return res.json({ success: true, data: result.recordset });
+    const data = await fetchClassStatsForNode(nodeKey, termId, nodeKey);
+    return res.json({ success: true, data });
   } catch (error) {
     return sendError(res, error);
   }

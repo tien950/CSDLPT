@@ -214,6 +214,37 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
        success: false,
        message: 'Thiếu thông tin sinh viên trong token.'
      });
+
+      router.get('/timetable', authenticate, requireRole(['nhanvien', 'quantrivien']), async (req, res) => {
+         const nodeKey = resolveNode(req);
+         const studentId = req.query.ID_student;
+         const headquarterId = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS);
+
+         if (!nodeKey) {
+           return res.status(400).json({ success: false, message: 'Thieu ma co so.' });
+         }
+         if (!studentId) {
+           return res.status(400).json({ success: false, message: 'Thieu ma sinh vien.' });
+         }
+
+         const proxyResult = await proxyIfRemote(req, nodeKey);
+         if (proxyResult) {
+           return res.status(proxyResult.status).json(proxyResult.data);
+         }
+
+         try {
+           const pool = await safeGetPool(nodeKey);
+           const request = createRequest(nodeKey, null, pool);
+           request.input('ID_student', ID_TYPE, studentId);
+           if (headquarterId) {
+             request.input('ID_headquarter', ID_TYPE, headquarterId);
+           }
+           const result = await request.execute('usp_GetStudentTimetable');
+           return res.json({ success: true, data: result.recordset });
+         } catch (error) {
+           return sendError(res, error);
+         }
+       });
    }
 
    try {

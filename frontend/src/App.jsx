@@ -98,6 +98,7 @@ export default function App() {
 
   const user = auth?.user;
   const isCentralAdmin = user?.role === 'quantrivien' && user?.maCS === 'HQHD';
+  const canSeeThongKe = user?.role === 'quantrivien';
 
   useEffect(() => {
     if (!user?.role) return;
@@ -163,14 +164,16 @@ export default function App() {
             <TabButton active={currentPage === 'quan-ly-du-lieu'} onClick={() => setCurrentPage('quan-ly-du-lieu')}>
               Quan Ly Du Lieu
             </TabButton>
-            <TabButton active={currentPage === 'thong-ke'} onClick={() => setCurrentPage('thong-ke')}>
-              Thong Ke
-            </TabButton>
+            {canSeeThongKe && (
+              <TabButton active={currentPage === 'thong-ke'} onClick={() => setCurrentPage('thong-ke')}>
+                Thong Ke
+              </TabButton>
+            )}
           </div>
 
           {currentPage === 'giam-sat-co-so' && isCentralAdmin && <GiamSatNode user={user} />}
           {currentPage === 'quan-ly-du-lieu' && <QuanLyDuLieu user={user} />}
-          {currentPage === 'thong-ke' && <ThongKe user={user} />}
+          {currentPage === 'thong-ke' && canSeeThongKe && <ThongKe user={user} />}
         </>
       )}
 
