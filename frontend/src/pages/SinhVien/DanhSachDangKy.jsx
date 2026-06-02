@@ -207,8 +207,8 @@ export default function DanhSachDangKy({ user }) {
       } else {
         alert(data.message || 'Đăng ký thất bại.');
       }
-    } catch {
-      alert('Có lỗi khi đăng ký.');
+    } catch (err) {
+      alert(err.message || 'Có lỗi khi đăng ký.');
     } finally {
       setRegistering(null);
     }
