@@ -293,7 +293,7 @@ router.get('/schedules', authenticate, requireRole(['sinhvien']), async (req, re
   if (!maCS || !isValidNode(maCS) || classIds.length === 0) {
     return res.status(400).json({
       success: false,
-      message: 'Thiáº¿u thÃ´ng tin.'
+      message: 'Thiếu thông tin.'
     });
   }
 

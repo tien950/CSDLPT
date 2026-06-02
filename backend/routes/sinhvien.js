@@ -296,7 +296,7 @@ async function fetchCentralCrossRows(req, path, queryName, sqlText, studentId) {
       timeoutMs: 60000
     });
     if (!remote.ok) {
-      const error = new Error(remote.data?.message ?? `KhÃ´ng láº¥y Ä‘Æ°á»£c ${queryName} tá»« HQHD.`);
+      const error = new Error(remote.data?.message ?? `Không lấy được ${queryName} từ HQHD.`);
       error.status = remote.status;
       error.node = HQHD_NODE;
       error.offline = remote.data?.offline === true || remote.status === 503;
@@ -316,7 +316,7 @@ async function fetchCrossRegistrations(req, studentId) {
   return fetchCentralCrossRows(
     req,
     '/api/sinhvien/cross-registrations',
-    'Ä‘Äƒng kÃ½ chÃ©o',
+    'đăng ký chéo',
     buildCrossRegistrationsSql(),
     studentId
   );
@@ -326,7 +326,7 @@ async function fetchCrossSchedule(req, studentId) {
   return fetchCentralCrossRows(
     req,
     '/api/sinhvien/cross-schedule',
-    'thá»i khÃ³a biá»ƒu chÃ©o',
+    'thời khóa biểu chéo',
     buildCrossScheduleSql(),
     studentId
   );
@@ -407,7 +407,7 @@ async function proxyIfRemote(req, nodeKey) {
 router.get('/cross-registrations', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const maSV = req.user?.id;
   if (!maSV) {
-    return res.status(400).json({ success: false, message: 'Thiáº¿u thÃ´ng tin sinh viÃªn trong token.' });
+    return res.status(400).json({ success: false, message: 'Thiếu thông tin sinh viên trong token.' });
   }
 
   try {
@@ -421,7 +421,7 @@ router.get('/cross-registrations', authenticate, requireRole(['sinhvien']), asyn
 router.get('/cross-schedule', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const maSV = req.user?.id;
   if (!maSV) {
-    return res.status(400).json({ success: false, message: 'Thiáº¿u thÃ´ng tin sinh viÃªn trong token.' });
+    return res.status(400).json({ success: false, message: 'Thiếu thông tin sinh viên trong token.' });
   }
 
   try {
@@ -540,7 +540,7 @@ router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req
      try {
        crossRows = await fetchCrossRegistrations(req, maSV);
      } catch (error) {
-       console.warn(`[CROSS] KhÃ´ng láº¥y Ä‘Æ°á»£c Ä‘Äƒng kÃ½ chÃ©o tá»« HQHD: ${error.message}`);
+       console.warn(`[CROSS] Không lấy được đăng ký chéo từ HQHD: ${error.message}`);
        offlineNodes.push(HQHD_NODE);
        crossErrors.push({ node: HQHD_NODE, message: error.message });
      }
@@ -548,8 +548,8 @@ router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req
      const data = dedupeRows(
        [...localRows, ...crossRows],
        [
-         ['MÃ£ Ä‘Äƒng kÃ½', 'maDangKy', 'ID_registration'],
-         ['MÃ£ lá»›p há»c pháº§n', 'maMH', 'ID_class']
+         ['Mã đăng ký', 'maDangKy', 'ID_registration'],
+         ['Mã lớp học phần', 'maMH', 'ID_class']
        ]
      );
 
@@ -601,7 +601,7 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
      try {
        crossRows = await fetchCrossSchedule(req, maSV);
      } catch (error) {
-       console.warn(`[CROSS] KhÃ´ng láº¥y Ä‘Æ°á»£c thá»i khÃ³a biá»ƒu chÃ©o tá»« HQHD: ${error.message}`);
+       console.warn(`[CROSS] Không lấy được thời khóa biểu chéo từ HQHD: ${error.message}`);
        offlineNodes.push(HQHD_NODE);
        crossErrors.push({ node: HQHD_NODE, message: error.message });
      }
@@ -609,8 +609,8 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
      const data = dedupeRows(
        [...localRows, ...crossRows],
        [
-         ['MÃ£ buá»•i há»c', 'ID_session', 'id_session'],
-         ['MÃ£ lá»›p há»c pháº§n', 'ID_class', 'id_class']
+         ['Mã buổi học', 'ID_session', 'id_session'],
+         ['Mã lớp học phần', 'ID_class', 'id_class']
        ]
      );
 
