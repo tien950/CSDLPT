@@ -88,7 +88,7 @@ export default function DanhSachDangKy({ user }) {
         useGateway
           ? gatewayFetch(`/api/hocphan/available?maCS=${maCS}`)
           : apiFetch(`/api/hocphan/available?maCS=${maCS}`, maCS),
-        apiFetch('/api/sinhvien/registrations', studentCampus)
+        apiFetch('/api/sinhvien/registrations?refresh=1', studentCampus)
       ]);
 
       if (!availData?.success) {
@@ -127,7 +127,7 @@ export default function DanhSachDangKy({ user }) {
           giangVien: row['Giảng viên'] ?? row.giangVien ?? row.teacher_name,
           ngayDangKy: row['Thời gian đăng ký'] ?? row.ngayDangKy ?? row.registered_at,
           trangThai: row['Trạng thái'] ?? row.trangThai ?? row.registration_status
-        }));
+        })).filter(row => String(row.trangThai ?? 'REGISTERED').toUpperCase() === 'REGISTERED');
         setRegistered(mapped);
       }
     } catch (err) {

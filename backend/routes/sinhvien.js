@@ -86,6 +86,20 @@ function dedupeRows(rows, keys) {
   });
 }
 
+function isActiveRegistration(row) {
+  const status = String(getField(row, [
+    'Trạng thái',
+    'trangThai',
+    'registration_status'
+  ], 'REGISTERED')).toUpperCase();
+  return status === 'REGISTERED';
+}
+
+function shouldBypassCache(req) {
+  const value = req.query?.refresh ?? req.query?.noCache;
+  return value === '1' || value === 'true' || value === 'yes';
+}
+
 function buildCrossRegistrationsSql() {
   return `
 WITH q AS
@@ -521,8 +535,8 @@ router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req
    }
 
    try {
-     // Check cache first
-     const cached = getCachedResult(maSV, maCS, 'registrations');
+     const bypassCache = shouldBypassCache(req);
+     const cached = bypassCache ? null : getCachedResult(maSV, maCS, 'registrations');
      if (cached) {
        return res.json({
          success: true,
@@ -546,7 +560,7 @@ router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req
      }
 
      const data = dedupeRows(
-       [...localRows, ...crossRows],
+       [...localRows, ...crossRows].filter(isActiveRegistration),
        [
          ['Mã đăng ký', 'maDangKy', 'ID_registration'],
          ['Mã lớp học phần', 'maMH', 'ID_class']

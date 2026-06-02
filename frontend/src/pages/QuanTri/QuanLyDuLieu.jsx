@@ -11,6 +11,18 @@ const PAGE_SIZE = 10;
 
 const NUMBER_TYPES = new Set(['int', 'bigint', 'smallint', 'tinyint', 'decimal', 'numeric', 'float', 'real']);
 const EXCLUDED_COLUMNS = new Set(['rowguid']);
+const NO_DIRECT_DELETE_TABLES = new Set([
+  'headquarter',
+  'department',
+  'curriculum',
+  'student',
+  'teacher',
+  'subject',
+  'class',
+  'room',
+  'term',
+  'timeslot'
+]);
 
 const COLUMN_LABELS = {
   ID_headquarter: 'Mã cơ sở',
@@ -126,6 +138,7 @@ export default function QuanLyDuLieu({ user }) {
   const canPickCampus = user?.role === 'quantrivien' && user?.maCS === 'HQHD';
   const currentCampus = canPickCampus ? campus : (user?.maCS ?? campus);
   const canModifySelectedTable = selectedTable !== 'headquarter' || canPickCampus;
+  const canDeleteSelectedTable = canModifySelectedTable && !NO_DIRECT_DELETE_TABLES.has(selectedTable);
 
   const primaryKeys = useMemo(() => meta?.primaryKeys ?? [], [meta]);
   const primaryKeySet = useMemo(() => new Set(primaryKeys), [primaryKeys]);
@@ -222,7 +235,7 @@ export default function QuanLyDuLieu({ user }) {
   };
 
   const handleDelete = async row => {
-    if (!canModifySelectedTable) return;
+    if (!canDeleteSelectedTable) return;
     if (!window.confirm('Bạn có chắc muốn xóa dòng này?')) return;
     const keys = {};
     primaryKeys.forEach(key => { keys[key] = row[key]; });
@@ -344,6 +357,11 @@ export default function QuanLyDuLieu({ user }) {
             Cơ sở đào tạo chỉ được chỉnh sửa bởi quản trị viên HQHD.
           </p>
         )}
+        {canModifySelectedTable && !canDeleteSelectedTable && (
+          <p className="subtitle" style={{ marginTop: -4, marginBottom: 12 }}>
+            Bảng này có liên kết với dữ liệu khác nên chỉ cho phép chỉnh sửa, không xóa trực tiếp.
+          </p>
+        )}
 
         {loading ? (
           <p>Đang tải...</p>
@@ -365,7 +383,9 @@ export default function QuanLyDuLieu({ user }) {
                         <td>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <button type="button" className="secondary" onClick={() => handleEdit(row)}>Sửa</button>
-                            <button type="button" onClick={() => handleDelete(row)} disabled={saving}>Xóa</button>
+                            {canDeleteSelectedTable && (
+                              <button type="button" onClick={() => handleDelete(row)} disabled={saving}>Xóa</button>
+                            )}
                           </div>
                         </td>
                       )}

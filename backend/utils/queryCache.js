@@ -1,6 +1,9 @@
 // Shared query cache across routes
 const queryCache = new Map();
-const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+const configuredTtlMs = Number(process.env.QUERY_CACHE_TTL_MS);
+const CACHE_TTL_MS = Number.isFinite(configuredTtlMs) && configuredTtlMs > 0
+  ? configuredTtlMs
+  : 60 * 1000; // 1 minute by default
 
 export function getCacheKey(studentId, nodeKey, queryName) {
   return `${studentId}:${nodeKey}:${queryName}`;
