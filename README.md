@@ -7,7 +7,6 @@ Hệ thống quản lý đăng ký học phần phân tán cho 3 cơ sở đại
 ### Kiến Trúc Hệ Thống
 - **1 Server Chính** (Publisher) tại Hà Đông
 - **2 Server Chi Nhánh** (Subscribers) tại Hòa Lạc & TP. Hồ Chí Minh
-- **3 Database SQL Server** độc lập, sử dụng **2-Phase Commit (2PC)** cho giao dịch xuyên cơ sở
 
 ### Công Nghệ
 | Lớp | Công Nghệ |
