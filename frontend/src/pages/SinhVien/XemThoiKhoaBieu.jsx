@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { gatewayFetch } from '../../config/api.js';
+import { apiFetch } from '../../config/api.js';
 
 function formatDate(dateStr) {
   if (!dateStr) return '-';
@@ -9,7 +9,6 @@ function formatDate(dateStr) {
 function formatTime(timeStr) {
   if (!timeStr) return '-';
   try {
-    // Try to extract HH:MM:SS directly from string (handles TIME format "09:15:00")
     const match = timeStr.match(/(\d{1,2}):(\d{2}):(\d{2})/);
     if (match) {
       const hours = String(parseInt(match[1], 10)).padStart(2, '0');
@@ -17,7 +16,6 @@ function formatTime(timeStr) {
       return `${hours}:${minutes}`;
     }
 
-    // Fallback: parse ISO date and adjust for Vietnam timezone (UTC+7)
     const date = new Date(timeStr);
     if (isNaN(date.getTime())) return timeStr;
 
@@ -35,23 +33,7 @@ function getDayOfWeekName(dayNum) {
   return days[dayNum] || `Thứ ${dayNum}`;
 }
 
-function getWeekDays(baseDate = new Date()) {
-  const date = new Date(baseDate);
-  const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(date.setDate(diff));
-
-  const weekDays = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(d.getDate() + i);
-    weekDays.push(d);
-  }
-  return weekDays;
-}
-
 function groupScheduleByDay(schedules) {
-  // Group by day first
   const byDay = {};
 
   schedules.forEach(session => {
@@ -73,7 +55,6 @@ function groupScheduleByDay(schedules) {
     byDay[dayNum].slots.push(session);
   });
 
-  // Convert to array and sort by dayNum
   return Object.values(byDay).sort((a, b) => a.dayNum - b.dayNum);
 }
 
@@ -81,7 +62,6 @@ export default function XemThoiKhoaBieu({ user }) {
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [currentWeek, setCurrentWeek] = useState(0);
   const [groupedSchedules, setGroupedSchedules] = useState([]);
 
   useEffect(() => {
@@ -97,7 +77,7 @@ export default function XemThoiKhoaBieu({ user }) {
     setLoading(true);
     setError('');
     try {
-      const data = await gatewayFetch('/api/sinhvien/schedule');
+      const data = await apiFetch('/api/sinhvien/schedule', user?.maCS ?? 'HQHD');
 
       if (!data?.success) {
         setError(data?.message || 'Không thể tải thời khóa biểu.');
@@ -131,7 +111,7 @@ export default function XemThoiKhoaBieu({ user }) {
 
   return (
     <section className="card">
-      <h2>Thời Khóa Biểu Môn Học</h2>
+      <h2>Thời khóa biểu môn học</h2>
 
       {error && <div className="alert">{error}</div>}
 
@@ -177,13 +157,13 @@ export default function XemThoiKhoaBieu({ user }) {
                     textAlign: 'left',
                     fontWeight: 'bold',
                     width: '22%'
-                  }}>Môn Học</th>
+                  }}>Môn học</th>
                   <th style={{
                     padding: '12px 8px',
                     textAlign: 'left',
                     fontWeight: 'bold',
                     width: '16%'
-                  }}>Giảng Viên</th>
+                  }}>Giảng viên</th>
                   <th style={{
                     padding: '12px 8px',
                     textAlign: 'left',
@@ -195,13 +175,13 @@ export default function XemThoiKhoaBieu({ user }) {
                     textAlign: 'left',
                     fontWeight: 'bold',
                     width: '12%'
-                  }}>Ngày Học</th>
+                  }}>Ngày học</th>
                   <th style={{
                     padding: '12px 8px',
                     textAlign: 'left',
                     fontWeight: 'bold',
                     width: '18%'
-                  }}>Ghi Chú</th>
+                  }}>Ghi chú</th>
                 </tr>
               </thead>
               <tbody>

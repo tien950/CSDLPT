@@ -3,8 +3,8 @@ import { apiFetch } from '../../config/api.js';
 import Pagination from '../../components/Pagination.jsx';
 
 const CAMPUS_OPTIONS = [
-  { key: 'HQHD', label: 'Ha Dong' },
-  { key: 'HQHL', label: 'Hoa Lac' },
+  { key: 'HQHD', label: 'Hà Đông' },
+  { key: 'HQHL', label: 'Hòa Lạc' },
   { key: 'HQHCM', label: 'TP. HCM' },
 ];
 const PAGE_SIZE = 10;
@@ -13,54 +13,54 @@ const NUMBER_TYPES = new Set(['int', 'bigint', 'smallint', 'tinyint', 'decimal',
 const EXCLUDED_COLUMNS = new Set(['rowguid']);
 
 const COLUMN_LABELS = {
-  ID_headquarter: 'Ma co so',
-  name_headquarter: 'Ten co so',
-  address: 'Dia chi',
-  ID_department: 'Ma khoa',
-  name_department: 'Ten khoa',
-  ID_student: 'Ma sinh vien',
-  name_student: 'Ten sinh vien',
-  date_of_birth: 'Ngay sinh',
-  gender_student: 'Gioi tinh',
-  address_student: 'Dia chi SV',
-  phone_student: 'So dien thoai',
-  year_of_admission: 'Nam nhap hoc',
-  ID_teacher: 'Ma giang vien',
-  name_teacher: 'Ten giang vien',
-  degree: 'Hoc vi',
-  address_teacher: 'Dia chi GV',
-  phone_teacher: 'SDT giang vien',
-  gender_teacher: 'Gioi tinh GV',
-  ID_subject: 'Ma hoc phan',
-  name_subject: 'Ten hoc phan',
-  number_of_credit: 'So tin chi',
-  ID_class: 'Ma lop hoc phan',
-  group_number: 'Nhom',
-  class_status: 'Trang thai lop',
-  min_students: 'Si so toi thieu',
-  max_students: 'Si so toi da',
-  number_of_registration: 'So da dang ky',
-  ID_room: 'Ma phong',
-  name_room: 'Ten phong',
-  capacity: 'Suc chua',
-  ID_session: 'Ma buoi hoc',
-  study_date: 'Ngay hoc',
-  day_of_week: 'Thu',
-  note: 'Ghi chu',
-  ID_timeslot: 'Ma ca',
-  shift_no: 'Ca hoc',
-  start_time: 'Gio bat dau',
-  end_time: 'Gio ket thuc',
-  ID_term: 'Ma hoc ky',
-  name_term: 'Ten hoc ky',
-  year_start: 'Nam hoc',
-  term_no: 'Hoc ky so',
-  start_date: 'Ngay bat dau',
-  end_date: 'Ngay ket thuc',
-  reg_open: 'Mo dang ky',
-  reg_close: 'Dong dang ky',
-  ID_curriculum: 'Ma chuong trinh',
-  curriculum_name: 'Ten chuong trinh',
+  ID_headquarter: 'Mã cơ sở',
+  name_headquarter: 'Tên cơ sở',
+  address: 'Địa chỉ',
+  ID_department: 'Mã khoa',
+  name_department: 'Tên khoa',
+  ID_student: 'Mã sinh viên',
+  name_student: 'Tên sinh viên',
+  date_of_birth: 'Ngày sinh',
+  gender_student: 'Giới tính',
+  address_student: 'Địa chỉ SV',
+  phone_student: 'Số điện thoại',
+  year_of_admission: 'Năm nhập học',
+  ID_teacher: 'Mã giảng viên',
+  name_teacher: 'Tên giảng viên',
+  degree: 'Học vị',
+  address_teacher: 'Địa chỉ GV',
+  phone_teacher: 'SĐT giảng viên',
+  gender_teacher: 'Giới tính GV',
+  ID_subject: 'Mã học phần',
+  name_subject: 'Tên học phần',
+  number_of_credit: 'Số tín chỉ',
+  ID_class: 'Mã lớp học phần',
+  group_number: 'Nhóm',
+  class_status: 'Trạng thái lớp',
+  min_students: 'Sĩ số tối thiểu',
+  max_students: 'Sĩ số tối đa',
+  number_of_registration: 'Số đã đăng ký',
+  ID_room: 'Mã phòng',
+  name_room: 'Tên phòng',
+  capacity: 'Sức chứa',
+  ID_session: 'Mã buổi học',
+  study_date: 'Ngày học',
+  day_of_week: 'Thứ',
+  note: 'Ghi chú',
+  ID_timeslot: 'Mã ca',
+  shift_no: 'Ca học',
+  start_time: 'Giờ bắt đầu',
+  end_time: 'Giờ kết thúc',
+  ID_term: 'Mã học kỳ',
+  name_term: 'Tên học kỳ',
+  year_start: 'Năm học',
+  term_no: 'Học kỳ số',
+  start_date: 'Ngày bắt đầu',
+  end_date: 'Ngày kết thúc',
+  reg_open: 'Mở đăng ký',
+  reg_close: 'Đóng đăng ký',
+  ID_curriculum: 'Mã chương trình',
+  curriculum_name: 'Tên chương trình',
 };
 
 function getColumnLabel(name) {
@@ -139,13 +139,13 @@ export default function QuanLyDuLieu({ user }) {
       try {
         const data = await apiFetch('/api/admin/tables', currentCampus);
         if (!data.success) {
-          setError(data.message || 'Khong the tai danh sach bang.');
+          setError(data.message || 'Không thể tải danh sách bảng.');
           return;
         }
         setTables(data.data ?? []);
         if (!selectedTable && data.data?.length) setSelectedTable(data.data[0].key);
       } catch (err) {
-        setError('Loi tai danh sach bang: ' + err.message);
+        setError('Lỗi tải danh sách bảng: ' + err.message);
       }
     };
     fetchTables();
@@ -165,7 +165,7 @@ export default function QuanLyDuLieu({ user }) {
         if (!metaData.success || !data.success) {
           setMeta(null);
           setRows([]);
-          setError(metaData.message || data.message || 'Khong the tai du lieu.');
+          setError(metaData.message || data.message || 'Không thể tải dữ liệu.');
           return;
         }
         setMeta(metaData.data);
@@ -177,7 +177,7 @@ export default function QuanLyDuLieu({ user }) {
       } catch (err) {
         setMeta(null);
         setRows([]);
-        setError('Loi tai du lieu: ' + err.message);
+        setError('Lỗi tải dữ liệu: ' + err.message);
       } finally {
         setLoading(false);
       }
@@ -220,7 +220,7 @@ export default function QuanLyDuLieu({ user }) {
   };
 
   const handleDelete = async row => {
-    if (!window.confirm('Ban co chac muon xoa dong nay?')) return;
+    if (!window.confirm('Bạn có chắc muốn xóa dòng này?')) return;
     const keys = {};
     primaryKeys.forEach(key => { keys[key] = row[key]; });
     if (Object.keys(keys).length === 0) return;
@@ -231,13 +231,13 @@ export default function QuanLyDuLieu({ user }) {
         body: { maCS: canPickCampus ? campus : undefined, keys },
       });
       if (!payload.success) {
-        alert(payload.message || 'Xoa that bai.');
+        alert(payload.message || 'Xóa thất bại.');
         return;
       }
       setRows(prev => prev.filter(item => item !== row));
       resetForm();
     } catch (err) {
-      alert('Loi xoa: ' + err.message);
+      alert('Lỗi xóa: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -260,7 +260,7 @@ export default function QuanLyDuLieu({ user }) {
     try {
       const result = await apiFetch(`/api/admin/${selectedTable}`, currentCampus, { method, body });
       if (!result.success) {
-        alert(result.message || 'Luu that bai.');
+        alert(result.message || 'Lưu thất bại.');
         return;
       }
       const query = canPickCampus ? `?maCS=${campus}` : '';
@@ -268,7 +268,7 @@ export default function QuanLyDuLieu({ user }) {
       if (refresh.success) setRows(refresh.data ?? []);
       resetForm();
     } catch (err) {
-      alert('Loi luu: ' + err.message);
+      alert('Lỗi lưu: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -300,13 +300,13 @@ export default function QuanLyDuLieu({ user }) {
   return (
     <div className="stack">
       <section className="card">
-        <h2>Quan ly du lieu</h2>
-        <p className="subtitle">Quan ly thong tin theo bang du lieu va co so.</p>
+        <h2>Quản lý dữ liệu</h2>
+        <p className="subtitle">Quản lý thông tin theo bảng dữ liệu và cơ sở.</p>
         {error && <div className="alert" style={{ marginTop: 12 }}>{error}</div>}
 
         <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 16 }}>
           <label style={{ minWidth: 220 }}>
-            Bang du lieu
+            Bảng dữ liệu
             <select value={selectedTable} onChange={e => setSelectedTable(e.target.value)}>
               {tables.map(table => (
                 <option key={table.key} value={table.key}>{table.label}</option>
@@ -315,7 +315,7 @@ export default function QuanLyDuLieu({ user }) {
           </label>
 
           <label style={{ minWidth: 220 }}>
-            Co so
+            Cơ sở
             <select value={campus} onChange={e => setCampus(e.target.value)} disabled={!canPickCampus}>
               {CAMPUS_OPTIONS.map(option => (
                 <option key={option.key} value={option.key}>{option.label}</option>
@@ -327,18 +327,18 @@ export default function QuanLyDuLieu({ user }) {
 
       <section className="card">
         <div className="row" style={{ flexWrap: 'wrap' }}>
-          <h3>Danh sach du lieu</h3>
+          <h3>Danh sách dữ liệu</h3>
           <input
-            placeholder="Tim nhanh trong bang..."
+            placeholder="Tìm nhanh trong bảng..."
             value={keyword}
             onChange={e => { setKeyword(e.target.value); setPage(1); }}
             style={{ minWidth: 260 }}
           />
-          <button type="button" className="secondary" disabled>Tong: {filteredRows.length}</button>
+          <button type="button" className="secondary" disabled>Tổng: {filteredRows.length}</button>
         </div>
 
         {loading ? (
-          <p>Dang tai...</p>
+          <p>Đang tải...</p>
         ) : (
           <>
             <div className="table-wrap">
@@ -346,7 +346,7 @@ export default function QuanLyDuLieu({ user }) {
                 <thead>
                   <tr>
                     {visibleColumns.map(col => <th key={col.name}>{getColumnLabel(col.name)}</th>)}
-                    <th>Thao tac</th>
+                    <th>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -355,8 +355,8 @@ export default function QuanLyDuLieu({ user }) {
                       {visibleColumns.map(col => <td key={col.name}>{formatValue(row[col.name], col)}</td>)}
                       <td>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button type="button" className="secondary" onClick={() => handleEdit(row)}>Sua</button>
-                          <button type="button" onClick={() => handleDelete(row)} disabled={saving}>Xoa</button>
+                          <button type="button" className="secondary" onClick={() => handleEdit(row)}>Sửa</button>
+                          <button type="button" onClick={() => handleDelete(row)} disabled={saving}>Xóa</button>
                         </div>
                       </td>
                     </tr>
@@ -364,7 +364,7 @@ export default function QuanLyDuLieu({ user }) {
                   {pageRows.length === 0 && (
                     <tr>
                       <td colSpan={visibleColumns.length + 1} style={{ textAlign: 'center', color: '#777' }}>
-                        Chua co du lieu.
+                        Chưa có dữ liệu.
                       </td>
                     </tr>
                   )}
@@ -377,7 +377,7 @@ export default function QuanLyDuLieu({ user }) {
       </section>
 
       <section className="card">
-        <h3>{editKeys ? 'Cap nhat du lieu' : 'Them moi du lieu'}</h3>
+        <h3>{editKeys ? 'Cập nhật dữ liệu' : 'Thêm mới dữ liệu'}</h3>
         <form className="form" onSubmit={handleSubmit}>
           {editableColumns.map(col => (
             <label key={col.name}>
@@ -387,11 +387,11 @@ export default function QuanLyDuLieu({ user }) {
           ))}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <button type="submit" disabled={saving || loading}>
-              {saving ? 'Dang luu...' : editKeys ? 'Cap nhat' : 'Them moi'}
+              {saving ? 'Đang lưu...' : editKeys ? 'Cập nhật' : 'Thêm mới'}
             </button>
             {editKeys && (
               <button type="button" className="secondary" onClick={resetForm}>
-                Huy chinh sua
+                Hủy chỉnh sửa
               </button>
             )}
           </div>

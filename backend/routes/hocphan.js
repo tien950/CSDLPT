@@ -132,8 +132,62 @@ function collapseByClass(rows) {
   return Array.from(byClass.values());
 }
 
-async function proxyToHqhd(req, res) {
-  if (LOCAL_NODE === 'HQHD' || isProxyRequest(req)) {
+function isMissingProcedureError(error) {
+  const message = String(error?.message ?? '').toLowerCase();
+  return message.includes('could not find stored procedure') || message.includes('usp_getclassesbycampus');
+}
+
+async function fetchAvailableClassesLegacy(nodeKey, options = {}) {
+  const { maCS, termId = null, subjectId = null } = options;
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  request.input('headquarterId', ID_TYPE, getHeadquarterId(maCS) ?? maCS);
+  if (termId) request.input('termId', ID_TYPE, termId);
+  if (subjectId) request.input('subjectId', ID_TYPE, subjectId);
+
+  const termFilter = termId ? 'AND c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = @termId COLLATE SQL_Latin1_General_CP1_CI_AS' : '';
+  const subjectFilter = subjectId ? 'AND c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = @subjectId COLLATE SQL_Latin1_General_CP1_CI_AS' : '';
+
+  return await request.query(
+    `SELECT
+       c.ID_class AS ID_class,
+       sub.name_subject AS name_subject,
+       sub.number_of_credit AS number_of_credit,
+       c.group_number AS group_number,
+       te.name_teacher AS name_teacher,
+       c.max_students AS max_students,
+       c.number_of_registration AS number_of_registration,
+       c.max_students - c.number_of_registration AS remaining,
+       c.class_status AS class_status,
+       tm.name_term AS name_term,
+       h.ID_headquarter AS ID_headquarter
+     FROM [class] c
+     JOIN subject sub
+       ON c.ID_subject = sub.ID_subject COLLATE DATABASE_DEFAULT
+     JOIN teacher te
+       ON c.ID_teacher = te.ID_teacher COLLATE DATABASE_DEFAULT
+     JOIN department d
+       ON te.ID_department = d.ID_department COLLATE DATABASE_DEFAULT
+     JOIN headquarter h
+       ON d.ID_headquarter = h.ID_headquarter COLLATE DATABASE_DEFAULT
+     LEFT JOIN term tm
+       ON tm.ID_term = c.ID_term COLLATE DATABASE_DEFAULT
+     WHERE h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = @headquarterId COLLATE SQL_Latin1_General_CP1_CI_AS
+       AND c.class_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'OPEN'
+       AND c.number_of_registration < c.max_students
+       ${termFilter}
+       ${subjectFilter}
+     ORDER BY sub.ID_subject, c.ID_class`
+  );
+}
+
+async function proxyToHqhd(req, res, targetNode = null) {
+  const normalizedTarget = normalizeNodeKey(targetNode);
+  if (
+    LOCAL_NODE === 'HQHD'
+    || isProxyRequest(req)
+    || (normalizedTarget && normalizedTarget === normalizeNodeKey(LOCAL_NODE))
+  ) {
     return null;
   }
 
@@ -226,10 +280,6 @@ router.get('/classes', authenticate, requireRole(['sinhvien']), async (req, res)
 });
 
 router.get('/available', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const proxyResponse = await proxyToHqhd(req, res);
-  if (proxyResponse) {
-    return proxyResponse;
-  }
   const maCS = normalizeNodeKey(req.query.maCS) || normalizeNodeKey(req.user?.maCS);
   const termId = req.query.ID_term ?? null;
   const subjectId = req.query.ID_subject ?? null;
@@ -239,6 +289,11 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
       success: false,
       message: 'Mã cơ sở không hợp lệ.'
     });
+  }
+
+  const proxyResponse = await proxyToHqhd(req, res, maCS);
+  if (proxyResponse) {
+    return proxyResponse;
   }
 
   try {
@@ -252,12 +307,20 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
       });
     }
 
-    const pool = await safeGetPool('HQHD');
-    const request = createRequest('HQHD', null, pool);
+    const pool = await safeGetPool(LOCAL_NODE);
+    const request = createRequest(LOCAL_NODE, null, pool);
     request.input('ID_headquarter', ID_TYPE, getHeadquarterId(maCS) ?? maCS);
     request.input('ID_term', ID_TYPE, termId);
     request.input('ID_subject', ID_TYPE, subjectId);
-    const result = await request.execute('usp_GetClassesByCampus');
+    let result;
+    try {
+      result = await request.execute('usp_GetClassesByCampus');
+    } catch (error) {
+      if (!isMissingProcedureError(error)) {
+        throw error;
+      }
+      result = await fetchAvailableClassesLegacy(LOCAL_NODE, { maCS, termId, subjectId });
+    }
 
     const data = collapseByClass(normalizeRows(result).map(normalizeAvailableClassRow));
     if (Array.isArray(data)) {
@@ -276,11 +339,6 @@ router.get('/available', authenticate, requireRole(['sinhvien']), async (req, re
 });
 
 router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async (req, res) => {
-  const proxyResponse = await proxyToHqhd(req, res);
-  if (proxyResponse) {
-    return proxyResponse;
-  }
-
   const maCS = normalizeNodeKey(req.query.maCS) || normalizeNodeKey(req.user?.maCS);
   const { classId } = req.params;
 
@@ -291,9 +349,14 @@ router.get('/schedule/:classId', authenticate, requireRole(['sinhvien']), async 
     });
   }
 
+  const proxyResponse = await proxyToHqhd(req, res, maCS);
+  if (proxyResponse) {
+    return proxyResponse;
+  }
+
   try {
-    const pool = await safeGetPool('HQHD');
-    const request = createRequest('HQHD', null, pool);
+    const pool = await safeGetPool(LOCAL_NODE);
+    const request = createRequest(LOCAL_NODE, null, pool);
     request.input('classId', ID_TYPE, classId);
     request.input('headquarterId', ID_TYPE, getHeadquarterId(maCS) ?? maCS);
     const result = await request.query(

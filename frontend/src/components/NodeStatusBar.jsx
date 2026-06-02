@@ -5,7 +5,7 @@ import Pagination from './Pagination.jsx';
 const statusLabels = {
   online: 'Online',
   offline: 'Offline',
-  error: 'Loi',
+  error: 'Lỗi',
 };
 
 const PAGE_SIZE = 10;
@@ -35,7 +35,7 @@ export default function NodeStatusBar({ maCS, autoRefreshMs = 5000 }) {
       setLastUpdated(new Date());
       setPage(1);
     } catch (error) {
-      setMessage(error.message ?? 'Co loi xay ra.');
+      setMessage(error.message ?? 'Có lỗi xảy ra.');
     } finally {
       setLoading(false);
     }
@@ -68,7 +68,7 @@ export default function NodeStatusBar({ maCS, autoRefreshMs = 5000 }) {
 
   const lastUpdatedText = lastUpdated
     ? new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(lastUpdated)
-    : 'Chua co du lieu';
+    : 'Chưa có dữ liệu';
 
   const pageCount = Math.max(1, Math.ceil(nodes.length / PAGE_SIZE));
   const pageRows = nodes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -77,16 +77,16 @@ export default function NodeStatusBar({ maCS, autoRefreshMs = 5000 }) {
     <section className="card">
       <div className="row">
         <div>
-          <h2>Giam sat co so</h2>
-          <p className="subtitle">Cap nhat lan cuoi: {lastUpdatedText}</p>
+          <h2>Giám sát cơ sở</h2>
+          <p className="subtitle">Cập nhật lần cuối: {lastUpdatedText}</p>
         </div>
         <div className="actions">
           <label className="toggle">
             <input type="checkbox" checked={autoRefresh} onChange={event => setAutoRefresh(event.target.checked)} />
-            Tu dong
+            Tự động
           </label>
           <button type="button" className="secondary" onClick={fetchStatus} disabled={loading}>
-            {loading ? 'Dang tai...' : 'Lam moi'}
+            {loading ? 'Đang tải...' : 'Làm mới'}
           </button>
         </div>
       </div>
@@ -94,8 +94,8 @@ export default function NodeStatusBar({ maCS, autoRefreshMs = 5000 }) {
       <div className="status-row">
         <span className="status-chip online">Online: {summary.online}</span>
         <span className="status-chip offline">Offline: {summary.offline}</span>
-        <span className="status-chip error">Loi: {summary.error}</span>
-        <span className="status-chip">Tong: {summary.total}</span>
+        <span className="status-chip error">Lỗi: {summary.error}</span>
+        <span className="status-chip">Tổng: {summary.total}</span>
       </div>
 
       {message && <div className="alert">{message}</div>}
@@ -104,9 +104,9 @@ export default function NodeStatusBar({ maCS, autoRefreshMs = 5000 }) {
         <table className="node-table">
           <thead>
             <tr>
-              <th>Co so</th>
-              <th>Trang thai</th>
-              <th>Ghi chu</th>
+              <th>Cơ sở</th>
+              <th>Trạng thái</th>
+              <th>Ghi chú</th>
             </tr>
           </thead>
           <tbody>
@@ -114,7 +114,7 @@ export default function NodeStatusBar({ maCS, autoRefreshMs = 5000 }) {
               <tr key={row.campus}>
                 <td>{row.campus}</td>
                 <td>
-                  <span className={`status-pill ${row.status}`}>{statusLabels[row.status] ?? 'Khong xac dinh'}</span>
+                  <span className={`status-pill ${row.status}`}>{statusLabels[row.status] ?? 'Không xác định'}</span>
                 </td>
                 <td>{row.timestamp ?? '-'}</td>
               </tr>
@@ -122,7 +122,7 @@ export default function NodeStatusBar({ maCS, autoRefreshMs = 5000 }) {
             {pageRows.length === 0 && (
               <tr>
                 <td colSpan={3} style={{ textAlign: 'center' }}>
-                  Chua co du lieu.
+                  Chưa có dữ liệu.
                 </td>
               </tr>
             )}

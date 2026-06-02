@@ -50,11 +50,11 @@ export default function Login({ onLogin }) {
 
       const loginData = payload.data ?? payload;
       if (!loginData.token) {
-        throw new Error('Backend khong tra ve token dang nhap.');
+        throw new Error('Backend không trả về token đăng nhập.');
       }
       onLogin(loginData);
     } catch (error) {
-      setMessage(error.message ?? 'Co loi xay ra.');
+      setMessage(error.message ?? 'Có lỗi xảy ra.');
     } finally {
       setLoading(false);
     }
@@ -68,12 +68,12 @@ export default function Login({ onLogin }) {
   return (
     <div className="login">
       <div className="card">
-        <h1>Dang nhap he thong</h1>
-        <p className="subtitle">Dung tai khoan demo de trai nghiem</p>
+        <h1>Đăng nhập hệ thống</h1>
+        <p className="subtitle">Dùng tài khoản demo để trải nghiệm</p>
 
         <form onSubmit={handleSubmit} className="form">
           <label>
-            Tai khoan
+            Tài khoản
             <input
               type="text"
               value={username}
@@ -84,7 +84,7 @@ export default function Login({ onLogin }) {
           </label>
 
           <label>
-            Mat khau
+            Mật khẩu
             <input
               type="password"
               value={password}
@@ -97,12 +97,12 @@ export default function Login({ onLogin }) {
           {message && <div className="alert">{message}</div>}
 
           <button type="submit" disabled={loading}>
-            {loading ? 'Dang dang nhap...' : 'Dang nhap'}
+            {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
           </button>
         </form>
 
         <div className="demo-list">
-          <p className="demo-title">Tai khoan mau (bam "Dien" de dien nhanh)</p>
+          <p className="demo-title">Tài khoản mẫu (bấm "Điền" để điền nhanh)</p>
           <div className="demo-grid">
             {demoGroups.map(group => (
               <section key={group.campus} className="demo-campus">
@@ -126,7 +126,7 @@ export default function Login({ onLogin }) {
                           className="secondary demo-mini-btn"
                           onClick={() => fillAccount(account)}
                         >
-                          Dien
+                          Điền
                         </button>
                       </div>
                     </div>

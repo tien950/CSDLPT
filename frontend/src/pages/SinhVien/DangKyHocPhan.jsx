@@ -51,15 +51,15 @@ export default function DangKyHocPhan({ user }) {
         if (!hasCurrent) {
           setMaLop(rows[0]?.id_class ?? '');
         }
-       } catch (error) {
-         if (!isActive) return;
-         setClassOptions([]);
-         const msg = formatMessage(error);
-         const dedupMsg = msg.includes(' | ')
-           ? deduplicateMessages(msg.split(' | '))
-           : msg;
-         setClassMessage(dedupMsg);
-       } finally {
+      } catch (error) {
+        if (!isActive) return;
+        setClassOptions([]);
+        const msg = formatMessage(error);
+        const dedupMsg = msg.includes(' | ')
+          ? deduplicateMessages(msg.split(' | '))
+          : msg;
+        setClassMessage(dedupMsg);
+      } finally {
         if (isActive) {
           setLoadingClasses(false);
         }
@@ -88,16 +88,16 @@ export default function DangKyHocPhan({ user }) {
         text: `Đăng ký thành công lớp ${payload.data.maLop} tại cơ sở ${payload.data.maCSLop ?? payload.data.maCS}.`
       });
       setMaLop('');
-     } catch (error) {
-       const msg = formatMessage(error);
-       const dedupMsg = msg.includes(' | ')
-         ? deduplicateMessages(msg.split(' | '))
-         : msg;
-       setResult({
-         type: 'error',
-         text: dedupMsg
-       });
-     } finally {
+    } catch (error) {
+      const msg = formatMessage(error);
+      const dedupMsg = msg.includes(' | ')
+        ? deduplicateMessages(msg.split(' | '))
+        : msg;
+      setResult({
+        type: 'error',
+        text: dedupMsg
+      });
+    } finally {
       setLoading(false);
     }
   };

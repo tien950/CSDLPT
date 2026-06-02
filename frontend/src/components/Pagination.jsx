@@ -32,7 +32,7 @@ export default function Pagination({ page, pages, onPageChange, loading }) {
         onClick={() => onPageChange(page - 1)}
         className="secondary"
       >
-        Truoc
+        Trước
       </button>
 
       {range.map((p, idx) =>

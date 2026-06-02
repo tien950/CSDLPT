@@ -9,8 +9,8 @@ import ThongKe from './pages/QuanTri/ThongKe.jsx';
 const STORAGE_KEY = 'csdlpt.auth';
 
 const campusLabels = {
-  HQHD: 'Ha Dong',
-  HQHL: 'Hoa Lac',
+  HQHD: 'Hà Đông',
+  HQHL: 'Hòa Lạc',
   HQHCM: 'TP. HCM',
 };
 
@@ -122,19 +122,19 @@ export default function App() {
   }
 
   const campusCode = user.maCS ?? user.ID_headquarter;
-  const campusName = campusLabels[campusCode] ?? campusCode ?? 'Khong xac dinh';
+  const campusName = campusLabels[campusCode] ?? campusCode ?? 'Không xác định';
 
   return (
     <div className="app">
       <header className="app-header">
         <div>
-          <h1>He thong dang ky hoc phan</h1>
+          <h1>Hệ thống đăng ký học phần</h1>
           <p className="subtitle">
-            Xin chao {user.username ?? user.id ?? user.ID_user} • {user.role} • {campusName}
+            Xin chào {user.username ?? user.id ?? user.ID_user} • {user.role} • {campusName}
           </p>
         </div>
         <button type="button" className="secondary" onClick={handleLogout}>
-          Dang xuat
+          Đăng xuất
         </button>
       </header>
 
@@ -142,10 +142,10 @@ export default function App() {
         <>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '2px solid #f0f0f0' }}>
             <TabButton active={currentPage === 'danh-sach-dang-ky'} onClick={() => setCurrentPage('danh-sach-dang-ky')}>
-              Danh Sach Dang Ky
+              Danh sách đăng ký
             </TabButton>
             <TabButton active={currentPage === 'thoi-khoa-bieu'} onClick={() => setCurrentPage('thoi-khoa-bieu')}>
-              Thoi Khoa Bieu
+              Thời khóa biểu
             </TabButton>
           </div>
           {currentPage === 'danh-sach-dang-ky' && <DanhSachDangKy user={user} />}
@@ -158,15 +158,15 @@ export default function App() {
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '2px solid #f0f0f0' }}>
             {isCentralAdmin && (
               <TabButton active={currentPage === 'giam-sat-co-so'} onClick={() => setCurrentPage('giam-sat-co-so')}>
-                Giam Sat Co So
+                Giám sát cơ sở
               </TabButton>
             )}
             <TabButton active={currentPage === 'quan-ly-du-lieu'} onClick={() => setCurrentPage('quan-ly-du-lieu')}>
-              Quan Ly Du Lieu
+              Quản lý dữ liệu
             </TabButton>
             {canSeeThongKe && (
               <TabButton active={currentPage === 'thong-ke'} onClick={() => setCurrentPage('thong-ke')}>
-                Thong Ke
+                Thống kê
               </TabButton>
             )}
           </div>
@@ -179,7 +179,7 @@ export default function App() {
 
       {user.role !== 'sinhvien' && user.role !== 'quantrivien' && user.role !== 'nhanvien' && (
         <section className="card">
-          <h2>Chua co giao dien cho vai tro nay</h2>
+          <h2>Chưa có giao diện cho vai trò này</h2>
         </section>
       )}
     </div>

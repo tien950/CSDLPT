@@ -3,25 +3,25 @@ import { apiFetch, gatewayFetch } from '../../config/api.js';
 import Pagination from '../../components/Pagination.jsx';
 
 const CAMPUS_OPTIONS = [
-  { key: 'HQHD', label: 'Ha Dong' },
-  { key: 'HQHL', label: 'Hoa Lac' },
+  { key: 'HQHD', label: 'Hà Đông' },
+  { key: 'HQHL', label: 'Hòa Lạc' },
   { key: 'HQHCM', label: 'TP. HCM' },
 ];
 
 const DISTRIBUTED_QUERY_OPTIONS = [
-  { key: 'q1', label: 'Q1 - So SV dang ky theo co so' },
-  { key: 'q2', label: 'Q2 - Hoc phan dang ky nhieu nhat' },
-  { key: 'q3', label: 'Q3 - Danh sach dang ky cheo co so' },
-  { key: 'q4', label: 'Q4 - Ty le lap day lop hoc phan' },
-  { key: 'q5', label: 'Q5 - So lop hoc phan mo theo khoa' },
-  { key: 'q6', label: 'Q6 - Danh sach lop hoc phan con cho' },
-  { key: 'q7', label: 'Q7 - Khoi luong giang day giang vien' },
+  { key: 'q1', label: 'Q1 - Số SV đăng ký theo cơ sở' },
+  { key: 'q2', label: 'Q2 - Học phần đăng ký nhiều nhất' },
+  { key: 'q3', label: 'Q3 - Danh sách đăng ký chéo cơ sở' },
+  { key: 'q4', label: 'Q4 - Tỷ lệ lấp đầy lớp học phần' },
+  { key: 'q5', label: 'Q5 - Số lớp học phần mở theo khoa' },
+  { key: 'q6', label: 'Q6 - Danh sách lớp học phần còn chỗ' },
+  { key: 'q7', label: 'Q7 - Khối lượng giảng dạy giảng viên' },
 ];
 
 const PAGE_SIZE = 10;
 
 const QUICK_REPORTS = [
-  { key: 'lophocphan', label: 'Tinh trang lop theo hoc ky', path: '/api/thongke/lophocphan', requiresTerm: true, supportsCampus: true },
+  { key: 'lophocphan', label: 'Tình trạng lớp theo học kỳ', path: '/api/thongke/lophocphan', requiresTerm: true, supportsCampus: true },
 ];
 
 export default function ThongKe({ user }) {
@@ -95,7 +95,7 @@ export default function ThongKe({ user }) {
       if (!data.success) {
         setDistributedRows([]);
         setDistributedTitle('');
-        setDistributedError(data.message || 'Khong chay duoc truy van.');
+        setDistributedError(data.message || 'Không chạy được truy vấn.');
         return;
       }
       setDistributedKey(selectedKey);
@@ -105,7 +105,7 @@ export default function ThongKe({ user }) {
     } catch (err) {
       setDistributedRows([]);
       setDistributedTitle('');
-      setDistributedError(err.message || 'Khong chay duoc truy van.');
+      setDistributedError(err.message || 'Không chạy được truy vấn.');
     } finally {
       setDistributedLoading(false);
     }
@@ -115,7 +115,7 @@ export default function ThongKe({ user }) {
     const report = QUICK_REPORTS.find(item => item.key === selectedKey);
     if (!report) return;
     if (report.requiresTerm && !quickTerm) {
-      setQuickError('Can chon hoc ky.');
+      setQuickError('Cần chọn học kỳ.');
       return;
     }
     setQuickLoading(true);
@@ -132,7 +132,7 @@ export default function ThongKe({ user }) {
       if (!data.success) {
         setQuickRows([]);
         setQuickTitle('');
-        setQuickError(data.message || 'Khong chay duoc bao cao.');
+        setQuickError(data.message || 'Không chạy được báo cáo.');
         return;
       }
       setQuickKey(selectedKey);
@@ -142,7 +142,7 @@ export default function ThongKe({ user }) {
     } catch (err) {
       setQuickRows([]);
       setQuickTitle('');
-      setQuickError(err.message || 'Khong chay duoc bao cao.');
+      setQuickError(err.message || 'Không chạy được báo cáo.');
     } finally {
       setQuickLoading(false);
     }
@@ -151,7 +151,7 @@ export default function ThongKe({ user }) {
   const handleLookupStudent = async () => {
     const studentId = lookupStudentId.trim();
     if (!studentId) {
-      setLookupError('Nhap ma sinh vien.');
+      setLookupError('Nhập mã sinh viên.');
       return;
     }
     setLookupLoading(true);
@@ -170,13 +170,13 @@ export default function ThongKe({ user }) {
         setRegistrationRows(results[0].value.data ?? []);
       } else {
         setRegistrationRows([]);
-        errors.push(results[0].reason?.message || 'Khong tra cuu duoc dang ky.');
+        errors.push(results[0].reason?.message || 'Không tra cứu được đăng ký.');
       }
       if (results[1].status === 'fulfilled') {
         setTimetableRows(results[1].value.data ?? []);
       } else {
         setTimetableRows([]);
-        errors.push(results[1].reason?.message || 'Khong tra cuu duoc thoi khoa bieu.');
+        errors.push(results[1].reason?.message || 'Không tra cứu được thời khóa biểu.');
       }
       if (errors.length) {
         setLookupError(errors.join(' | '));
@@ -186,7 +186,7 @@ export default function ThongKe({ user }) {
     } catch (err) {
       setRegistrationRows([]);
       setTimetableRows([]);
-      setLookupError(err.message || 'Khong tra cuu duoc.');
+      setLookupError(err.message || 'Không tra cứu được.');
     } finally {
       setLookupLoading(false);
     }
@@ -236,8 +236,8 @@ export default function ThongKe({ user }) {
     <div className="stack">
       {isAdmin && (
         <section className="card">
-          <h3>Bao cao nhanh</h3>
-          <p className="subtitle">Tong hop nhanh theo cac mau thong ke san co.</p>
+          <h3>Báo cáo nhanh</h3>
+          <p className="subtitle">Tổng hợp nhanh theo các mẫu thống kê sẵn có.</p>
           {quickError && <div className="alert" style={{ marginTop: 12 }}>{quickError}</div>}
 
           <div style={{ marginTop: 16, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
@@ -258,9 +258,9 @@ export default function ThongKe({ user }) {
           <div style={{ marginTop: 12, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', alignItems: 'end' }}>
             {QUICK_REPORTS.find(item => item.key === quickKey)?.supportsCampus && (
               <label style={{ minWidth: 220 }}>
-                Co so
+                Cơ sở
                 <select value={quickCampus} onChange={e => setQuickCampus(e.target.value)} disabled={!isCentralAdmin}>
-                  {isCentralAdmin && <option value="">Tat ca</option>}
+                  {isCentralAdmin && <option value="">Tất cả</option>}
                   {CAMPUS_OPTIONS.map(option => (
                     <option key={option.key} value={option.key}>{option.label}</option>
                   ))}
@@ -269,9 +269,9 @@ export default function ThongKe({ user }) {
             )}
             {QUICK_REPORTS.find(item => item.key === quickKey)?.requiresTerm && (
               <label style={{ minWidth: 260 }}>
-                Hoc ky (chon hoac nhap)
+                Học kỳ (chọn hoặc nhập)
                 <select value={quickTerm} onChange={e => setQuickTerm(e.target.value)}>
-                  <option value="">Chon hoc ky</option>
+                  <option value="">Chọn học kỳ</option>
                   {terms.map(term => (
                     <option key={term.ID_term ?? term.id_term} value={term.ID_term ?? term.id_term}>
                       {term.name_term ?? term.ID_term}
@@ -281,19 +281,19 @@ export default function ThongKe({ user }) {
                 <input
                   value={quickTerm}
                   onChange={e => setQuickTerm(e.target.value)}
-                  placeholder="Nhap ma hoc ky (VD: HK2024_1)"
+                  placeholder="Nhập mã học kỳ (VD: HK2024_1)"
                   style={{ marginTop: 8 }}
                 />
               </label>
             )}
             <button type="button" className="secondary" onClick={() => runQuickReport(quickKey)} disabled={quickLoading}>
-              {quickLoading ? 'Dang tai...' : 'Lam moi'}
+              {quickLoading ? 'Đang tải...' : 'Làm mới'}
             </button>
           </div>
 
           {quickTitle && (
             <p className="subtitle" style={{ marginTop: 12 }}>
-              {quickTitle} - Tong dong: {quickRows.length}
+              {quickTitle} - Tổng dòng: {quickRows.length}
             </p>
           )}
 
@@ -327,17 +327,17 @@ export default function ThongKe({ user }) {
 
       {isAdmin && (
         <section className="card">
-          <h3>Tra cuu theo sinh vien</h3>
-          <p className="subtitle">Tra cuu dang ky va thoi khoa bieu theo ma sinh vien.</p>
+          <h3>Tra cứu theo sinh viên</h3>
+          <p className="subtitle">Tra cứu đăng ký và thời khóa biểu theo mã sinh viên.</p>
           {lookupError && <div className="alert" style={{ marginTop: 12 }}>{lookupError}</div>}
 
           <div style={{ marginTop: 16, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', alignItems: 'end' }}>
             <label style={{ minWidth: 220 }}>
-              Ma sinh vien
+              Mã sinh viên
               <input value={lookupStudentId} onChange={e => setLookupStudentId(e.target.value)} placeholder="VD: B22ATTT003" />
             </label>
             <label style={{ minWidth: 220 }}>
-              Co so
+              Cơ sở
               <select value={lookupCampus} onChange={e => setLookupCampus(e.target.value)} disabled={!isCentralAdmin}>
                 {CAMPUS_OPTIONS.map(option => (
                   <option key={option.key} value={option.key}>{option.label}</option>
@@ -345,13 +345,13 @@ export default function ThongKe({ user }) {
               </select>
             </label>
             <button type="button" onClick={handleLookupStudent} disabled={lookupLoading}>
-              {lookupLoading ? 'Dang tai...' : 'Tra cuu'}
+              {lookupLoading ? 'Đang tải...' : 'Tra cứu'}
             </button>
           </div>
 
           {registrationRows.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <h4>Ket qua dang ky</h4>
+              <h4>Kết quả đăng ký</h4>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -378,13 +378,13 @@ export default function ThongKe({ user }) {
 
           {registrationRows.length === 0 && timetableRows.length === 0 && !lookupLoading && (
             <p className="subtitle" style={{ marginTop: 12 }}>
-              Chua co du lieu.
+              Chưa có dữ liệu.
             </p>
           )}
 
           {timetableRows.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <h4>Thoi khoa bieu</h4>
+              <h4>Thời khóa biểu</h4>
               <div className="table-wrap">
                 <table className="data-table">
                   <thead>
@@ -413,8 +413,8 @@ export default function ThongKe({ user }) {
 
       {isCentralAdmin && (
         <section className="card">
-          <h3>Truy van phan tan</h3>
-          <p className="subtitle">Chay nhanh 7 truy van phan tan theo de tai.</p>
+          <h3>Truy vấn phân tán</h3>
+          <p className="subtitle">Chạy nhanh 7 truy vấn phân tán theo đề tài.</p>
           {distributedError && <div className="alert" style={{ marginTop: 12 }}>{distributedError}</div>}
 
           <div style={{ marginTop: 16, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
@@ -437,7 +437,7 @@ export default function ThongKe({ user }) {
 
           {distributedTitle && (
             <p className="subtitle" style={{ marginTop: 12 }}>
-              {distributedTitle} - Tong dong: {distributedRows.length}
+              {distributedTitle} - Tổng dòng: {distributedRows.length}
             </p>
           )}
 
