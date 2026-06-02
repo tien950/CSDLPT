@@ -7,6 +7,7 @@ import { createRequest, isOfflineError, withNode } from '../utils/db.js';
 import { deleteRow, insertRow, queryRows, updateRow } from '../utils/tableCrud.js';
 import { getCachedResult, setCachedResult } from '../utils/queryCache.js';
 import { callRemoteNode } from '../utils/remoteApi.js';
+import { fetchNodeApiJson } from '../utils/nodeProxy.js';
 
 const router = express.Router();
 const ID_TYPE = sql.NVarChar(50);
@@ -289,7 +290,11 @@ ORDER BY ngayHoc, caHoc, ID_class;
 
 async function fetchCentralCrossRows(req, path, queryName, sqlText, studentId) {
   if (normalizeNodeKey(LOCAL_NODE) !== HQHD_NODE) {
-    const remote = await callRemoteNode(HQHD_NODE, 'GET', path, null, getBearerToken(req));
+    const token = getBearerToken(req);
+    const remote = await fetchNodeApiJson(HQHD_NODE, path, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      timeoutMs: 60000
+    });
     if (!remote.ok) {
       const error = new Error(remote.data?.message ?? `KhÃ´ng láº¥y Ä‘Æ°á»£c ${queryName} tá»« HQHD.`);
       error.status = remote.status;
@@ -334,7 +339,8 @@ async function fetchLocalRegistrations(nodeKey, studentId, headquarterId) {
   request.input('ID_headquarter', ID_TYPE, headquarterId);
 
   const result = await request.query(
-    `SELECT
+    `SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+     SELECT
        r.ID_registration AS maDangKy,
        c.ID_class AS maMH,
        sub.name_subject AS tenMonHoc,
@@ -380,14 +386,37 @@ async function fetchLocalRegistrations(nodeKey, studentId, headquarterId) {
   return result.recordset ?? [];
 }
 
-async function fetchLocalSchedule(nodeKey, studentId, headquarterId) {
+async function fetchLocalSchedule(nodeKey, studentId) {
   const pool = await safeGetPool(nodeKey);
+
+  const classRequest = createRequest(nodeKey, null, pool);
+  classRequest.input('ID_student', ID_TYPE, studentId);
+  const classResult = await classRequest.query(
+    `SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+     SELECT DISTINCT ID_class
+     FROM registration WITH (NOLOCK)
+     WHERE ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS
+       AND registration_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'REGISTERED'`
+  );
+
+  const classIds = (classResult.recordset ?? [])
+    .map(row => row.ID_class)
+    .filter(Boolean);
+
+  if (classIds.length === 0) {
+    return [];
+  }
+
   const request = createRequest(nodeKey, null, pool);
-  request.input('ID_student', ID_TYPE, studentId);
-  request.input('ID_headquarter', ID_TYPE, headquarterId);
+  const classParams = classIds.map((classId, index) => {
+    const paramName = `class_${index}`;
+    request.input(paramName, ID_TYPE, classId);
+    return `@${paramName}`;
+  });
 
   const result = await request.query(
-    `SELECT
+    `SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+     SELECT
        ss.ID_session AS ID_session,
        c.ID_class AS ID_class,
        ss.study_date AS ngayHoc,
@@ -399,42 +428,24 @@ async function fetchLocalSchedule(nodeKey, studentId, headquarterId) {
        sub.name_subject AS tenMonHoc,
        te.name_teacher AS giangVien,
        ss.note AS ghiChu,
-       ss.ID_session AS [MÃ£ buá»•i há»c],
-       c.ID_class AS [MÃ£ lá»›p há»c pháº§n],
-       ss.study_date AS [NgÃ y há»c],
-       ss.day_of_week AS [Thá»©],
-       ts.shift_no AS [Ca há»c],
-       ts.start_time AS [Giá» báº¯t Ä‘áº§u],
-       ts.end_time AS [Giá» káº¿t thÃºc],
-       room.name_room AS [PhÃ²ng há»c],
-       sub.name_subject AS [TÃªn há»c pháº§n],
-       te.name_teacher AS [Giáº£ng viÃªn],
-       ss.note AS [Ghi chÃº],
-       h.ID_headquarter AS maCS
-     FROM registration r
-     JOIN student st
-       ON r.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = st.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN department d_st
-       ON st.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = d_st.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN headquarter h
-       ON d_st.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN [class] c
-       ON r.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN subject sub
+       d.ID_headquarter AS maCS
+     FROM [class] c WITH (NOLOCK)
+     JOIN subject sub WITH (NOLOCK)
        ON c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = sub.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN teacher te
+     JOIN teacher te WITH (NOLOCK)
        ON c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = te.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN [session] ss
+     JOIN department d WITH (NOLOCK)
+       ON te.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+     JOIN [session] ss WITH (NOLOCK)
        ON c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = ss.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN timeslot ts
+     JOIN timeslot ts WITH (NOLOCK)
        ON ss.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS = ts.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN room
+     JOIN room WITH (NOLOCK)
        ON ss.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS = room.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS
-     WHERE r.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS
-       AND h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
-       AND r.registration_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'REGISTERED'
+     WHERE c.ID_class IN (${classParams.join(', ')})
      ORDER BY ss.study_date, ts.shift_no, c.ID_class`
   );
+
   return result.recordset ?? [];
 }
 
@@ -585,12 +596,14 @@ router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req
      const localRows = await fetchLocalRegistrations(maCS, maSV, resolvedHeadquarter);
 
      const offlineNodes = [];
+     const crossErrors = [];
      let crossRows = [];
      try {
        crossRows = await fetchCrossRegistrations(req, maSV);
      } catch (error) {
        console.warn(`[CROSS] KhÃ´ng láº¥y Ä‘Æ°á»£c Ä‘Äƒng kÃ½ chÃ©o tá»« HQHD: ${error.message}`);
        offlineNodes.push(HQHD_NODE);
+       crossErrors.push({ node: HQHD_NODE, message: error.message });
      }
 
      const data = dedupeRows(
@@ -608,7 +621,7 @@ router.get('/registrations', authenticate, requireRole(['sinhvien']), async (req
      return res.json({
        success: true,
        data,
-       meta: { offlineNodes, crossRegistrationCount: crossRows.length },
+       meta: { offlineNodes, crossErrors, crossRegistrationCount: crossRows.length },
        cached: false
      });
    } catch (error) {
@@ -675,12 +688,14 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
      const localRows = await fetchLocalSchedule(maCS, maSV, resolvedHeadquarter);
 
      const offlineNodes = [];
+     const crossErrors = [];
      let crossRows = [];
      try {
        crossRows = await fetchCrossSchedule(req, maSV);
      } catch (error) {
        console.warn(`[CROSS] KhÃ´ng láº¥y Ä‘Æ°á»£c thá»i khÃ³a biá»ƒu chÃ©o tá»« HQHD: ${error.message}`);
        offlineNodes.push(HQHD_NODE);
+       crossErrors.push({ node: HQHD_NODE, message: error.message });
      }
 
      const data = dedupeRows(
@@ -698,7 +713,7 @@ router.get('/schedule', authenticate, requireRole(['sinhvien']), async (req, res
      return res.json({
        success: true,
        data,
-       meta: { offlineNodes, crossScheduleCount: crossRows.length },
+       meta: { offlineNodes, crossErrors, crossScheduleCount: crossRows.length },
        cached: false
      });
    } catch (error) {
@@ -724,3 +739,5 @@ router.get('/:id', authenticate, requireRole(['nhanvien', 'quantrivien']), async
 });
 
 export default router;
+
+

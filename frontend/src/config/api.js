@@ -8,7 +8,7 @@ export const API_BY_CAMPUS = {
   HQHL: import.meta.env.VITE_API_HQHL || 'http://26.54.47.104:4000',
   HQHCM: import.meta.env.VITE_API_HQHCM || 'http://26.213.180.63:4000',
 };
-const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 12000);
+const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 60000);
 
 export function getApiBase(maCS) {
   return API_BY_CAMPUS[maCS] || API_LOCAL;

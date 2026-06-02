@@ -3,6 +3,14 @@ import { LOCAL_NODE, localDbConfig } from './nodes.js';
 
 const poolCache = new Map();
 const poolTimestamps = new Map(); // Track when pools were created
+const DEFAULT_CONNECTION_TIMEOUT_MS = 5000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 60000;
+const DEFAULT_CANCEL_TIMEOUT_MS = 5000;
+
+function getTimeoutEnv(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
 
 function validateLocalDbConfig() {
   const missing = [];
@@ -30,9 +38,9 @@ function buildLocalConfig() {
     options: {
       encrypt: false,
       trustServerCertificate: true,
-      connectionTimeout: 5000,
-      requestTimeout: 15000,
-      cancelTimeout: 2000,
+      connectionTimeout: getTimeoutEnv('DB_CONNECTION_TIMEOUT_MS', DEFAULT_CONNECTION_TIMEOUT_MS),
+      requestTimeout: getTimeoutEnv('DB_REQUEST_TIMEOUT_MS', DEFAULT_REQUEST_TIMEOUT_MS),
+      cancelTimeout: getTimeoutEnv('DB_CANCEL_TIMEOUT_MS', DEFAULT_CANCEL_TIMEOUT_MS),
       ...(localDbConfig.instanceName ? { instanceName: localDbConfig.instanceName } : {})
     }
   };
