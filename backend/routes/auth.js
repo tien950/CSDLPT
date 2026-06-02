@@ -2,12 +2,27 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import { findDemoUser } from '../config/demo-users.js';
 import { LOCAL_NODE, normalizeNodeKey } from '../config/nodes.js';
+import { callRemoteNode } from '../utils/remoteApi.js';
 
 const router = express.Router();
 
 const TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '8h';
 
-router.post('/login', (req, res) => {
+async function ensureUserNodeOnline(userNode, backendNode) {
+  if (userNode === backendNode) {
+    return;
+  }
+
+  const result = await callRemoteNode(userNode, 'GET', '/api/internal/node-ping');
+  if (!result.ok || result.data?.success === false) {
+    const error = new Error(result.data?.message ?? `Server cơ sở ${userNode} đang tắt hoặc không phản hồi.`);
+    error.status = 503;
+    error.node = userNode;
+    throw error;
+  }
+}
+
+router.post('/login', async (req, res) => {
   const { username, password } = req.body ?? {};
 
   if (!username || !password) {
@@ -43,13 +58,22 @@ router.post('/login', (req, res) => {
     });
   }
 
-  // Non-HQHD backends only allow users from the same campus.
-  if (backendNode !== 'HQHD' && userNode !== backendNode) {
-    return res.status(403).json({
+  if (!userNode) {
+    return res.status(500).json({
       success: false,
-      message: `Tài khoản thuộc ${userNode} phải đăng nhập đúng backend ${userNode}. Backend hiện tại là ${backendNode}.`,
-      requiredNode: userNode,
-      backendNode
+      message: 'Tài khoản demo chưa được cấu hình cơ sở hợp lệ.'
+    });
+  }
+
+  try {
+    await ensureUserNodeOnline(userNode, backendNode);
+  } catch (error) {
+    return res.status(error.status ?? 503).json({
+      success: false,
+      message: `Không thể đăng nhập: server cơ sở ${userNode} đang tắt hoặc không phản hồi.`,
+      node: userNode,
+      backendNode,
+      status: 'offline'
     });
   }
 

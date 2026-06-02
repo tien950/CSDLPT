@@ -64,16 +64,20 @@ export async function callRemoteNode(nodeKey, method, path, body, token) {
 
   try {
     const url = buildUrl(baseUrl, path);
+    const headers = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-Internal-Call': 'true',
+      'x-node-proxy': '1'
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
     return await fetchWithTimeout(url, {
       method,
       body,
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: token ? `Bearer ${token}` : undefined,
-        'X-Internal-Call': 'true',
-        'x-node-proxy': '1'
-      }
+      headers
     });
   } catch (error) {
     const offlineError = new Error(`Node ${nodeKey} hiện không khả dụng`);
