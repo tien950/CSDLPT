@@ -5,6 +5,7 @@ import XemThoiKhoaBieu from './pages/SinhVien/XemThoiKhoaBieu.jsx';
 import GiamSatNode from './pages/QuanTri/GiamSatNode.jsx';
 import QuanLyDuLieu from './pages/QuanTri/QuanLyDuLieu.jsx';
 import ThongKe from './pages/QuanTri/ThongKe.jsx';
+import GiangVienTongQuan from './pages/GiangVien/TongQuan.jsx';
 
 const STORAGE_KEY = 'csdlpt.auth';
 
@@ -110,7 +111,11 @@ export default function App() {
       setCurrentPage(isCentralAdmin ? 'giam-sat-co-so' : 'quan-ly-du-lieu');
       return;
     }
-    setCurrentPage('thong-ke');
+    if (user.role === 'giangvien') {
+      setCurrentPage('giang-vien-tong-quan');
+      return;
+    }
+    setCurrentPage('danh-sach-dang-ky');
   }, [user?.role, isCentralAdmin]);
 
   if (!auth?.token || !user) {
@@ -149,6 +154,17 @@ export default function App() {
         </>
       )}
 
+      {user.role === 'giangvien' && (
+        <>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '2px solid #f0f0f0' }}>
+            <TabButton active={currentPage === 'giang-vien-tong-quan'} onClick={() => setCurrentPage('giang-vien-tong-quan')}>
+              Tong quan
+            </TabButton>
+          </div>
+          {currentPage === 'giang-vien-tong-quan' && <GiangVienTongQuan user={user} />}
+        </>
+      )}
+
       {user.role === 'quantrivien' && (
         <>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', borderBottom: '2px solid #f0f0f0' }}>
@@ -173,7 +189,7 @@ export default function App() {
         </>
       )}
 
-      {user.role !== 'sinhvien' && user.role !== 'quantrivien' && (
+      {user.role !== 'sinhvien' && user.role !== 'giangvien' && user.role !== 'quantrivien' && (
         <section className="card">
           <h2>Chưa có giao diện cho vai trò này</h2>
         </section>

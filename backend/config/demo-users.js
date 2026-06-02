@@ -14,6 +14,13 @@ export const demoUsers = [
     maCS: 'HQHL'
   },
   {
+    id: 'B22ATTT006',
+    username: 'b22attt006',
+    password: '123456',
+    role: 'sinhvien',
+    maCS: 'HQHL'
+  },
+  {
     id: 'B22ATTT001',
     username: 'b22attt001',
     password: '123456',
@@ -21,22 +28,22 @@ export const demoUsers = [
     maCS: 'HQHCM'
   },
   {
-    id: 'GVHD01',
-    username: 'gv_hd_01',
+    id: 'GV001',
+    username: 'gv001',
     password: 'gv123',
     role: 'giangvien',
     maCS: 'HQHD'
   },
   {
-    id: 'GVHL01',
-    username: 'gv_hl_01',
+    id: 'GV016',
+    username: 'gv016',
     password: 'gv123',
     role: 'giangvien',
     maCS: 'HQHL'
   },
   {
-    id: 'GVHCM01',
-    username: 'gv_hcm_01',
+    id: 'GV025',
+    username: 'gv025',
     password: 'gv123',
     role: 'giangvien',
     maCS: 'HQHCM'
