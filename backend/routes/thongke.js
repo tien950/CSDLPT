@@ -615,6 +615,11 @@ router.get('/sinhvien-theo-coso', authenticate, requireRole(['nhanvien', 'quantr
   const headquarterId = normalizeNodeKey(req.query.ID_headquarter ?? req.query.maCS);
 
   try {
+    if (normalizeNodeKey(LOCAL_NODE) !== 'HQHD') {
+      const remote = await callRemoteNode('HQHD', 'GET', req.originalUrl, null, req.headers.authorization);
+      return res.status(remote.status).json(remote.data);
+    }
+
     const pool = await safeGetPool('HQHD');
     const request = createRequest('HQHD', null, pool);
     if (headquarterId) {
@@ -630,6 +635,11 @@ router.get('/sinhvien-theo-coso', authenticate, requireRole(['nhanvien', 'quantr
 
 router.get('/dangky-cheo', authenticate, requireRole(['quantrivien']), async (req, res) => {
   try {
+    if (normalizeNodeKey(LOCAL_NODE) !== 'HQHD') {
+      const remote = await callRemoteNode('HQHD', 'GET', req.originalUrl, null, req.headers.authorization);
+      return res.status(remote.status).json(remote.data);
+    }
+
     const pool = await safeGetPool('HQHD');
     const request = createRequest('HQHD', null, pool);
     const result = await request.execute('usp_CheckCrossCampusRegistration');

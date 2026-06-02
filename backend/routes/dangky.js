@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import sql from 'mssql';
 import { getPool } from '../config/db.js';
 import { LOCAL_NODE, nodeKeys, normalizeNodeKey, getHeadquarterId, isValidNode } from '../config/nodes.js';
@@ -16,15 +16,35 @@ function sendError(res, error) {
       success: false,
       message: `Node ${node} hiện không khả dụng`,
       node,
+      step: error.step,
       offline: true
     });
   }
   return res.status(error.status ?? 500).json({
     success: false,
     message: error.message ?? 'Có lỗi xảy ra.',
+    step: error.step,
     node: error.node ?? LOCAL_NODE ?? 'UNKNOWN'
   });
 }
+
+async function timedStep(step, fn) {
+  const startedAt = Date.now();
+  try {
+    const result = await fn();
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs > 500) {
+      console.warn(`[DANGKY] ${step} took ${elapsedMs}ms`);
+    }
+    return result;
+  } catch (error) {
+    const elapsedMs = Date.now() - startedAt;
+    error.step = error.step ?? step;
+    console.error(`[DANGKY] ${step} failed after ${elapsedMs}ms: ${error.code ?? ''} ${error.message}`);
+    throw error;
+  }
+}
+
 async function safeGetPool(nodeKey) {
   try {
     return await getPool(nodeKey);
@@ -273,23 +293,9 @@ async function deleteLocalRegistration(nodeKey, regId) {
   const pool = await safeGetPool(nodeKey);
   const request = createRequest(nodeKey, null, pool);
   request.input('ID_registration', ID_TYPE, regId);
-  await request.query(
-    `DELETE FROM registration
-     WHERE ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS`
-  );
+  request.input('ID_headquarter', ID_TYPE, null);
+  await request.execute('usp_CancelRegistration');
 }
-async function updateLocalEnrollment(nodeKey, classId, delta) {
-  const pool = await safeGetPool(nodeKey);
-  const request = createRequest(nodeKey, null, pool);
-  request.input('ID_class', ID_TYPE, classId);
-  const updateSql = delta > 0
-    ? `UPDATE [class] SET number_of_registration = number_of_registration + 1
-       WHERE ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_class COLLATE SQL_Latin1_General_CP1_CI_AS`
-    : `UPDATE [class] SET number_of_registration = CASE WHEN number_of_registration > 0 THEN number_of_registration - 1 ELSE 0 END
-       WHERE ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_class COLLATE SQL_Latin1_General_CP1_CI_AS`;
-  await request.query(updateSql);
-}
-
 async function proxyCrossRegistrationToHqhd(req, res) {
   if (LOCAL_NODE === 'HQHD' || isProxyRequest(req)) {
     return null;
@@ -394,12 +400,10 @@ router.get('/internal/lophocphan/:id', authenticate, async (req, res) => {
   }
 });
 router.put('/internal/lophocphan/:id/enrollment', authenticate, async (req, res) => {
-  try {
-    await updateLocalEnrollment(LOCAL_NODE, req.params.id, 1);
-    return res.json({ success: true });
-  } catch (error) {
-    return sendError(res, error);
-  }
+  return res.status(405).json({
+    success: false,
+    message: 'Sĩ số lớp học phần chỉ được cập nhật thông qua procedure đăng ký/hủy đăng ký.'
+  });
 });
 router.post('/internal/dangky', authenticate, async (req, res) => {
   const { ID_registration, ID_student, ID_class, ID_headquarter } = req.body ?? {};
@@ -444,7 +448,7 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
 
   let regId = null;
   try {
-    const classInfo = await getClassById(maCSLopNormalized, maLop, req.headers.authorization);
+    const classInfo = await timedStep('getClassById', () => getClassById(maCSLopNormalized, maLop, req.headers.authorization));
     if (!classInfo || classInfo.class_status !== 'OPEN' || classInfo.number_of_registration >= classInfo.max_students) {
       return res.status(400).json({
         success: false,
@@ -453,23 +457,23 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
     }
 
     if (maCS === maCSLopNormalized) {
-      const headquarterStudent = (await fetchStudentHeadquarterId(LOCAL_NODE, maSV)) ?? getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE;
-      const pool = await safeGetPool(LOCAL_NODE);
+      const headquarterStudent = (await timedStep('fetchStudentHeadquarterId', () => fetchStudentHeadquarterId(LOCAL_NODE, maSV))) ?? getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE;
+      const pool = await timedStep('getPool', () => safeGetPool(LOCAL_NODE));
       const checkRequest = createRequest(LOCAL_NODE, null, pool);
       checkRequest.input('ID_student', ID_TYPE, maSV);
       checkRequest.input('ID_class', ID_TYPE, maLop);
       checkRequest.input('ID_headquarter', ID_TYPE, headquarterStudent);
-      const checkResult = await checkRequest.execute('usp_CheckRegisterCondition');
+      const checkResult = await timedStep('usp_CheckRegisterCondition', () => checkRequest.execute('usp_CheckRegisterCondition'));
       if (!checkResult.recordset[0]?.is_valid) {
         return res.status(400).json({ success: false, message: checkResult.recordset[0]?.message || 'Không thể đăng ký lớp này.' });
       }
-      regId = await generateRegId(pool, LOCAL_NODE);
-      await registerLocal(LOCAL_NODE, regId, maSV, maLop, headquarterStudent);
+      regId = await timedStep('generateRegId', () => generateRegId(pool, LOCAL_NODE));
+      await timedStep('usp_RegisterClass', () => registerLocal(LOCAL_NODE, regId, maSV, maLop, headquarterStudent));
       clearStudentCache(maSV, LOCAL_NODE);
       return res.json({ success: true, data: { maDangKy: regId, maSV, maLop, maCS: LOCAL_NODE, maCSLop: maCSLopNormalized } });
     }
 
-    regId = await registerCrossCampusOnHqhd(maSV, maLop);
+    regId = await timedStep('usp_RegisterCrossCampusClass', () => registerCrossCampusOnHqhd(maSV, maLop));
     clearStudentCache(maSV, LOCAL_NODE);
     return res.json({
       success: true,
@@ -479,6 +483,46 @@ router.post('/', authenticate, requireRole(['sinhvien']), async (req, res) => {
     return sendError(res, error);
   }
 });
+async function cancelRegistrationForStudent(maDangKy, maSV) {
+  const pool = await safeGetPool(LOCAL_NODE);
+  const verifyReq = createRequest(LOCAL_NODE, null, pool);
+  verifyReq.input('ID_registration', ID_TYPE, maDangKy);
+  verifyReq.input('ID_student', ID_TYPE, maSV);
+  const verifyResult = await verifyReq.query(
+    `SELECT
+       r.ID_class,
+       r.registration_status,
+       d.ID_headquarter AS class_headquarter
+     FROM registration r
+     LEFT JOIN [class] c
+       ON r.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS
+     LEFT JOIN teacher t
+       ON c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
+     LEFT JOIN department d
+       ON t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
+     WHERE r.ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS
+       AND r.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
+  );
+
+  if (verifyResult.recordset.length === 0) {
+    const error = new Error('Không tìm thấy đăng ký.');
+    error.status = 404;
+    throw error;
+  }
+
+  if (verifyResult.recordset[0].registration_status === 'CANCELLED') {
+    const error = new Error('Đăng ký này đã bị hủy rồi.');
+    error.status = 400;
+    throw error;
+  }
+
+  const cancelReq = createRequest(LOCAL_NODE, null, pool);
+  cancelReq.input('ID_registration', ID_TYPE, maDangKy);
+  cancelReq.input('ID_headquarter', ID_TYPE, verifyResult.recordset[0].class_headquarter ?? getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE);
+  await cancelReq.execute('usp_CancelRegistration');
+  clearStudentCache(maSV, LOCAL_NODE);
+}
+
 router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res) => {
   const { maDangKy } = req.body ?? {};
   const maSV = req.user?.id;
@@ -487,44 +531,19 @@ router.post('/cancel', authenticate, requireRole(['sinhvien']), async (req, res)
     return res.status(400).json({ success: false, message: 'Thiếu thông tin hủy đăng ký.' });
   }
   try {
-    const pool = await safeGetPool(LOCAL_NODE);
-    const verifyReq = createRequest(LOCAL_NODE, null, pool);
-    verifyReq.input('ID_registration', ID_TYPE, maDangKy);
-    verifyReq.input('ID_student', ID_TYPE, maSV);
-    const verifyResult = await verifyReq.query(
-      `SELECT
-         r.ID_class,
-         r.registration_status,
-         d.ID_headquarter AS class_headquarter
-       FROM registration r
-       LEFT JOIN [class] c
-         ON r.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS
-       LEFT JOIN teacher t
-         ON c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = t.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-       LEFT JOIN department d
-         ON t.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
-       WHERE r.ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_registration COLLATE SQL_Latin1_General_CP1_CI_AS
-         AND r.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS`
-    );
-    if (verifyResult.recordset.length === 0) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy đăng ký.' });
-    }
-    if (verifyResult.recordset[0].registration_status === 'CANCELLED') {
-      return res.status(400).json({ success: false, message: 'Đăng ký này đã bị hủy rồi.' });
-    }
-    const cancelReq = createRequest(LOCAL_NODE, null, pool);
-    cancelReq.input('ID_registration', ID_TYPE, maDangKy);
-    cancelReq.input('ID_headquarter', ID_TYPE, verifyResult.recordset[0].class_headquarter ?? getHeadquarterId(LOCAL_NODE) ?? LOCAL_NODE);
-    await cancelReq.execute('usp_CancelRegistration');
-    clearStudentCache(maSV, LOCAL_NODE);
+    await cancelRegistrationForStudent(maDangKy, maSV);
     return res.json({ success: true, message: 'Hủy đăng ký thành công.' });
   } catch (error) {
     return sendError(res, error);
   }
 });
 router.delete('/:maDangKy', authenticate, requireRole(['sinhvien']), async (req, res) => {
+  const maSV = req.user?.id;
+  if (!maSV || !req.params.maDangKy) {
+    return res.status(400).json({ success: false, message: 'Thiếu thông tin hủy đăng ký.' });
+  }
   try {
-    await deleteLocalRegistration(LOCAL_NODE, req.params.maDangKy);
+    await cancelRegistrationForStudent(req.params.maDangKy, maSV);
     return res.json({ success: true, message: 'Hủy đăng ký thành công.' });
   } catch (error) {
     return sendError(res, error);

@@ -338,117 +338,56 @@ async function fetchLocalRegistrations(nodeKey, studentId, headquarterId) {
   request.input('ID_student', ID_TYPE, studentId);
   request.input('ID_headquarter', ID_TYPE, headquarterId);
 
-  const result = await request.query(
-    `SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-     SELECT
-       r.ID_registration AS maDangKy,
-       c.ID_class AS maMH,
-       sub.name_subject AS tenMonHoc,
-       sub.number_of_credit AS soTC,
-       c.group_number AS nhom,
-       te.name_teacher AS giangVien,
-       r.registered_at AS ngayDangKy,
-       r.cancelled_at AS ngayHuy,
-       r.registration_status AS trangThai,
-       h.ID_headquarter AS [MÃ£ cÆ¡ sá»Ÿ],
-       h.name_headquarter AS [CÆ¡ sá»Ÿ],
-       r.ID_registration AS [MÃ£ Ä‘Äƒng kÃ½],
-       st.ID_student AS [MÃ£ sinh viÃªn],
-       st.name_student AS [TÃªn sinh viÃªn],
-       c.ID_class AS [MÃ£ lá»›p há»c pháº§n],
-       sub.ID_subject AS [MÃ£ há»c pháº§n],
-       sub.name_subject AS [TÃªn há»c pháº§n],
-       sub.number_of_credit AS [Sá»‘ tÃ­n chá»‰],
-       tm.name_term AS [Há»c ká»³],
-       te.name_teacher AS [Giáº£ng viÃªn],
-       r.registered_at AS [Thá»i gian Ä‘Äƒng kÃ½],
-       r.cancelled_at AS [Thá»i gian há»§y],
-       r.registration_status AS [Tráº¡ng thÃ¡i]
-     FROM registration r
-     JOIN student st
-       ON r.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = st.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN department d_st
-       ON st.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = d_st.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN headquarter h
-       ON d_st.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN [class] c
-       ON r.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN subject sub
-       ON c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = sub.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
-     LEFT JOIN term tm
-       ON c.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS = tm.ID_term COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN teacher te
-       ON c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = te.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-     WHERE r.ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS
-       AND h.ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_headquarter COLLATE SQL_Latin1_General_CP1_CI_AS
-     ORDER BY r.registered_at DESC`
-  );
-  return result.recordset ?? [];
-}
-
-async function fetchLocalSchedule(nodeKey, studentId) {
-  const pool = await safeGetPool(nodeKey);
-
-  const classRequest = createRequest(nodeKey, null, pool);
-  classRequest.input('ID_student', ID_TYPE, studentId);
-  const classResult = await classRequest.query(
-    `SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-     SELECT DISTINCT ID_class
-     FROM registration WITH (NOLOCK)
-     WHERE ID_student COLLATE SQL_Latin1_General_CP1_CI_AS = @ID_student COLLATE SQL_Latin1_General_CP1_CI_AS
-       AND registration_status COLLATE SQL_Latin1_General_CP1_CI_AS = 'REGISTERED'`
-  );
-
-  const classIds = (classResult.recordset ?? [])
-    .map(row => row.ID_class)
-    .filter(Boolean);
-
-  if (classIds.length === 0) {
-    return [];
-  }
-
-  const request = createRequest(nodeKey, null, pool);
-  const classParams = classIds.map((classId, index) => {
-    const paramName = `class_${index}`;
-    request.input(paramName, ID_TYPE, classId);
-    return `@${paramName}`;
+  const result = await request.execute('usp_GetRegistrationResult');
+  return (result.recordset ?? []).map(row => {
+    const values = Object.values(row);
+    return {
+      ...row,
+      maDangKy: row.maDangKy ?? values[2],
+      maSV: row.maSV ?? values[3],
+      maMH: row.maMH ?? values[5],
+      maHocPhan: row.maHocPhan ?? values[6],
+      tenMonHoc: row.tenMonHoc ?? values[7],
+      soTC: row.soTC ?? values[8],
+      hocKy: row.hocKy ?? values[9],
+      giangVien: row.giangVien ?? values[10],
+      ngayDangKy: row.ngayDangKy ?? values[11],
+      ngayHuy: row.ngayHuy ?? values[12],
+      trangThai: row.trangThai ?? values[13]
+    };
   });
-
-  const result = await request.query(
-    `SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-     SELECT
-       ss.ID_session AS ID_session,
-       c.ID_class AS ID_class,
-       ss.study_date AS ngayHoc,
-       ss.day_of_week AS thuHoc,
-       ts.shift_no AS caHoc,
-       ts.start_time AS gioStart,
-       ts.end_time AS gioEnd,
-       room.name_room AS phongHoc,
-       sub.name_subject AS tenMonHoc,
-       te.name_teacher AS giangVien,
-       ss.note AS ghiChu,
-       d.ID_headquarter AS maCS
-     FROM [class] c WITH (NOLOCK)
-     JOIN subject sub WITH (NOLOCK)
-       ON c.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS = sub.ID_subject COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN teacher te WITH (NOLOCK)
-       ON c.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS = te.ID_teacher COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN department d WITH (NOLOCK)
-       ON te.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS = d.ID_department COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN [session] ss WITH (NOLOCK)
-       ON c.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS = ss.ID_class COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN timeslot ts WITH (NOLOCK)
-       ON ss.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS = ts.ID_timeslot COLLATE SQL_Latin1_General_CP1_CI_AS
-     JOIN room WITH (NOLOCK)
-       ON ss.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS = room.ID_room COLLATE SQL_Latin1_General_CP1_CI_AS
-     WHERE c.ID_class IN (${classParams.join(', ')})
-     ORDER BY ss.study_date, ts.shift_no, c.ID_class`
-  );
-
-  return result.recordset ?? [];
 }
 
+async function fetchLocalSchedule(nodeKey, studentId, headquarterId) {
+  const pool = await safeGetPool(nodeKey);
+  const request = createRequest(nodeKey, null, pool);
+  request.input('ID_student', ID_TYPE, studentId);
+  request.input('ID_headquarter', ID_TYPE, headquarterId);
+
+  const result = await request.execute('usp_GetStudentTimetable');
+  return (result.recordset ?? []).map(row => {
+    const values = Object.values(row);
+    const classId = row.ID_class ?? values[4];
+    const studyDate = row.ngayHoc ?? values[6];
+    const shiftNo = row.caHoc ?? values[8];
+    return {
+      ...row,
+      ID_session: row.ID_session ?? `${classId ?? ''}:${studyDate ?? ''}:${shiftNo ?? ''}`,
+      ID_class: classId,
+      tenMonHoc: row.tenMonHoc ?? values[5],
+      ngayHoc: studyDate,
+      thuHoc: row.thuHoc ?? values[7],
+      caHoc: shiftNo,
+      gioStart: row.gioStart ?? values[9],
+      gioEnd: row.gioEnd ?? values[10],
+      phongHoc: row.phongHoc ?? values[11],
+      node: row.node ?? values[12],
+      maCS: row.maCS ?? values[12],
+      giangVien: row.giangVien ?? values[13],
+      ghiChu: row.ghiChu ?? null
+    };
+  });
+}
 function resolveNode(req) {
   const requested = normalizeNodeKey(req.query.maCS ?? req.query.ID_headquarter ?? req.body?.ID_headquarter);
   const userNode = normalizeNodeKey(req.user?.maCS);
